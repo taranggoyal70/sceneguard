@@ -97,3 +97,24 @@ create policy "baselines_owned" on public.baselines for all using (auth.uid() = 
 create policy "zones_owned" on public.zones for all using (auth.uid() = user_id) with check (auth.uid() = user_id and exists (select 1 from public.spaces where spaces.id = zones.space_id and spaces.user_id = auth.uid()));
 create policy "incidents_owned" on public.incidents for all using (auth.uid() = user_id) with check (auth.uid() = user_id and exists (select 1 from public.spaces where spaces.id = incidents.space_id and spaces.user_id = auth.uid()));
 create policy "security_events_read_own" on public.security_events for select using (auth.uid() = user_id);
+
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer set search_path = ''
+as $$
+begin
+  insert into public.profiles (user_id, display_name)
+  values (new.id, left(coalesce(nullif(trim(new.raw_user_meta_data ->> 'display_name'), ''), split_part(new.email, '@', 1)), 80));
+  return new;
+end;
+$$;
+
+create trigger on_auth_user_created
+after insert on auth.users
+for each row execute procedure public.handle_new_user();
+
+revoke all on all tables in schema public from anon;
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on public.profiles, public.app_sessions, public.spaces, public.baselines, public.zones, public.incidents to authenticated;
+grant select on public.security_events to authenticated;
