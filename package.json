@@ -1,0 +1,31 @@
+{
+  "name": "sceneguard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Privacy-first spatial memory and explainable safety boundaries powered by GPT-5.6.",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch server/index.js",
+    "start": "node server/index.js",
+    "test": "node --test tests/*.test.js",
+    "test:integration": "node --env-file=.env --test tests/*.integration.js",
+    "check": "node --check server/index.js && node --check server/authorization.js && node --check server/evidenceVault.js && node --check src/app.js && node --check src/sceneEngine.js && node --check src/securityPolicy.js",
+    "verify": "npm run check && npm test"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.57.4",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "helmet": "^8.1.0",
+    "lucide": "^0.544.0",
+    "openai": "^5.19.1",
+    "zod": "^3.25.76"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": ["openai-build-week", "gpt-5.6", "spatial-memory", "privacy", "productivity"],
+  "license": "MIT"
+}
