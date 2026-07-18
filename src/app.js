@@ -838,3 +838,41 @@ async function logout() {
   showAuth();
 }
 
+function bindEvents() {
+  $("#auth-form").addEventListener("submit", handleAuthSubmit);
+  $("#toggle-password").addEventListener("click", togglePasswordVisibility);
+  $("#auth-mode").addEventListener("click", () => setAuthMode(state.authMode === "login" ? "signup" : "login"));
+  $$(".nav-item").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
+  $$("[data-create-space]").forEach((button) => button.addEventListener("click", openCreateSpace));
+  $("#create-space-button").addEventListener("click", openCreateSpace);
+  $("#space-form").addEventListener("submit", createSpace);
+  $("[data-close-dialog]").addEventListener("click", () => $("#space-dialog").close());
+  $("#camera-button").addEventListener("click", () => state.stream ? stopCamera() : startCamera());
+  $("#camera-flip").addEventListener("click", flipCamera);
+  $("#baseline-button").addEventListener("click", setBaseline);
+  $("#zone-button").addEventListener("click", beginZoneDrawing);
+  $("#zone-canvas").addEventListener("pointerdown", handleZonePointerDown);
+  $("#zone-canvas").addEventListener("pointermove", handleZonePointerMove);
+  $("#zone-canvas").addEventListener("pointerup", handleZonePointerUp);
+  $("#zone-form").addEventListener("submit", saveZone);
+  $("[data-close-zone]").addEventListener("click", () => { state.pendingRect = null; $("#zone-dialog").close(); paintZones(); });
+  $("#zone-sensitivity").addEventListener("input", (event) => setText("#sensitivity-output", `${event.target.value}%`));
+  $("#arm-button").addEventListener("click", armSpace);
+  $("#close-event").addEventListener("click", () => $("#event-dialog").close());
+  $("#mark-expected").addEventListener("click", () => reviewEvent("expected"));
+  $("#mark-concern").addEventListener("click", () => reviewEvent("concern"));
+  $("#save-privacy").addEventListener("click", savePrivacy);
+  $("#change-email").addEventListener("click", changeEmail);
+  $("#export-account").addEventListener("click", exportAccount);
+  $("#delete-account").addEventListener("click", deleteAccount);
+  $("#logout-button").addEventListener("click", logout);
+  window.addEventListener("resize", paintZones);
+  document.addEventListener("visibilitychange", () => { if (document.hidden && state.armed) disarmSpace(); });
+  for (const eventName of ["pointerdown", "keydown"]) document.addEventListener(eventName, scheduleInactivityLogout, { passive: true });
+}
+
+bindEvents();
+setAuthMode("login");
+refreshIcons();
+await sleep(0);
+await bootstrapApp();
