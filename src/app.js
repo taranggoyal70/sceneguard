@@ -206,3 +206,147 @@ async function bootstrapApp() {
   }
 }
 
+function setView(view) {
+  const labels = {
+    live: ["Observe, do not profile", "Live space"],
+    incidents: ["Human-reviewed evidence", "Evidence timeline"],
+    spaces: ["One memory per place", "Spaces"],
+    privacy: ["Maximum privacy by default", "Privacy and account"],
+  };
+  $$(".view").forEach((node) => node.classList.toggle("active", node.id === `${view}-view`));
+  $$(".nav-item").forEach((node) => node.classList.toggle("active", node.dataset.view === view));
+  setText("#view-eyebrow", labels[view][0]);
+  setText("#view-title", labels[view][1]);
+  if (view !== "live" && state.armed) disarmSpace();
+}
+
+function renderAll() {
+  renderLiveSpace();
+  renderSpaces();
+  renderIncidents();
+  refreshIcons();
+}
+
+function renderLiveSpace() {
+  const hasSpace = Boolean(state.activeSpace);
+  $("#no-space-state").hidden = hasSpace;
+  $("#monitor-workspace").hidden = !hasSpace;
+  if (!hasSpace) return;
+  setText("#active-space-name", state.activeSpace.name);
+  renderZones();
+  updateSetupState();
+  paintZones();
+}
+
+function renderZones() {
+  const zones = state.activeSpace?.zones || [];
+  setText("#zone-count", String(zones.length));
+  const list = $("#zone-list");
+  list.replaceChildren();
+  if (!zones.length) {
+    const empty = document.createElement("p");
+    empty.className = "rail-empty";
+    empty.textContent = "Draw a boundary over a door, object, or area after setting the baseline.";
+    list.append(empty);
+    return;
+  }
+  zones.forEach((zone) => {
+    const row = document.createElement("article");
+    row.className = "zone-item";
+    const color = document.createElement("span");
+    const copy = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = zone.name;
+    const detail = document.createElement("small");
+    detail.textContent = `${percentLabel(zone.sensitivity)} change threshold`;
+    copy.append(name, detail);
+    const remove = document.createElement("button");
+    remove.className = "icon-button";
+    remove.type = "button";
+    remove.title = `Remove ${zone.name}`;
+    remove.setAttribute("aria-label", `Remove ${zone.name}`);
+    const icon = document.createElement("i");
+    icon.dataset.lucide = "trash-2";
+    remove.append(icon);
+    remove.addEventListener("click", () => removeZone(zone.id));
+    row.append(color, copy, remove);
+    list.append(row);
+  });
+  refreshIcons();
+}
+
+function renderSpaces() {
+  const list = $("#space-list");
+  list.replaceChildren();
+  $("#space-empty").hidden = state.spaces.length > 0;
+  state.spaces.forEach((space) => {
+    const item = document.createElement("article");
+    item.className = "space-item";
+    const header = document.createElement("header");
+    const symbol = document.createElement("span");
+    symbol.className = "space-symbol";
+    const symbolIcon = document.createElement("i");
+    symbolIcon.dataset.lucide = "scan-line";
+    symbol.append(symbolIcon);
+    const status = document.createElement("span");
+    status.className = `status ${space.baseline ? "live" : "neutral"}`;
+    const dot = document.createElement("span");
+    status.append(dot, document.createTextNode(space.baseline ? "Baseline ready" : "Setup needed"));
+    header.append(symbol, status);
+    const heading = document.createElement("h3");
+    heading.textContent = space.name;
+    heading.style.marginTop = "16px";
+    const context = document.createElement("p");
+    context.textContent = `${space.context[0].toUpperCase()}${space.context.slice(1)} space`;
+    const footer = document.createElement("footer");
+    const detail = document.createElement("span");
+    detail.textContent = `${space.zones.length} protected ${space.zones.length === 1 ? "zone" : "zones"}`;
+    const open = document.createElement("button");
+    open.className = "text-button";
+    open.type = "button";
+    open.textContent = "Open space";
+    open.addEventListener("click", () => selectSpace(space.id));
+    footer.append(detail, open);
+    item.append(header, heading, context, footer);
+    list.append(item);
+  });
+  refreshIcons();
+}
+
+function renderIncidents() {
+  const list = $("#incident-list");
+  list.replaceChildren();
+  $("#incident-empty").hidden = state.incidents.length > 0;
+  $("#incident-count").hidden = state.incidents.length === 0;
+  setText("#incident-count", String(state.incidents.length));
+  state.incidents.forEach((incident) => {
+    const row = document.createElement("article");
+    row.className = "incident-row";
+    const thumb = document.createElement("div");
+    thumb.className = "incident-thumb";
+    const image = document.createElement("img");
+    image.src = incident.afterImage;
+    image.alt = "Captured event evidence";
+    thumb.append(image);
+    const copy = document.createElement("div");
+    copy.className = "incident-copy";
+    const title = document.createElement("h3");
+    title.textContent = incident.summary;
+    const reason = document.createElement("p");
+    reason.textContent = incident.reason;
+    const meta = document.createElement("div");
+    meta.className = "incident-meta";
+    const space = state.spaces.find((candidate) => candidate.id === incident.spaceId);
+    const source = incident.analysisSource === "gpt-5.6" ? "GPT-5.6" : "Local detector";
+    meta.textContent = `${space?.name || "Protected space"} | ${new Date(incident.createdAt).toLocaleString()} | ${source} | ${Math.round(incident.confidence * 100)}% confidence | ${incident.reviewStatus}`;
+    copy.append(title, reason, meta);
+    const review = document.createElement("button");
+    review.className = "button secondary";
+    review.type = "button";
+    review.textContent = "Review evidence";
+    review.addEventListener("click", () => openEvent(incident));
+    row.append(thumb, copy, review);
+    list.append(row);
+  });
+}
+
