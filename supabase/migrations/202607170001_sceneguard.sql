@@ -66,3 +66,34 @@ create table public.incidents (
   created_at timestamptz not null default now(),
   reviewed_at timestamptz
 );
+
+create table public.security_events (
+  id bigint generated always as identity primary key,
+  user_id uuid references auth.users(id) on delete set null,
+  event_type text not null check (char_length(event_type) between 1 and 80),
+  ip_hash text not null check (char_length(ip_hash) = 64),
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index spaces_user_created_idx on public.spaces(user_id, created_at desc);
+create index zones_user_space_idx on public.zones(user_id, space_id);
+create index incidents_user_created_idx on public.incidents(user_id, created_at desc);
+create index app_sessions_user_idx on public.app_sessions(user_id);
+create index security_events_user_created_idx on public.security_events(user_id, created_at desc);
+
+alter table public.profiles enable row level security;
+alter table public.app_sessions enable row level security;
+alter table public.spaces enable row level security;
+alter table public.baselines enable row level security;
+alter table public.zones enable row level security;
+alter table public.incidents enable row level security;
+alter table public.security_events enable row level security;
+
+create policy "profiles_owned" on public.profiles for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "sessions_owned" on public.app_sessions for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "spaces_owned" on public.spaces for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "baselines_owned" on public.baselines for all using (auth.uid() = user_id) with check (auth.uid() = user_id and exists (select 1 from public.spaces where spaces.id = baselines.space_id and spaces.user_id = auth.uid()));
+create policy "zones_owned" on public.zones for all using (auth.uid() = user_id) with check (auth.uid() = user_id and exists (select 1 from public.spaces where spaces.id = zones.space_id and spaces.user_id = auth.uid()));
+create policy "incidents_owned" on public.incidents for all using (auth.uid() = user_id) with check (auth.uid() = user_id and exists (select 1 from public.spaces where spaces.id = incidents.space_id and spaces.user_id = auth.uid()));
+create policy "security_events_read_own" on public.security_events for select using (auth.uid() = user_id);
