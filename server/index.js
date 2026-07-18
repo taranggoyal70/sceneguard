@@ -232,3 +232,77 @@ async function authenticate(request, response, next) {
   }
 }
 
+function mapZone(row) {
+  return { id: row.id, name: row.name, sensitivity: Number(row.sensitivity), x: Number(row.x), y: Number(row.y), width: Number(row.width), height: Number(row.height) };
+}
+
+function mapSpace(row) {
+  const baselines = Array.isArray(row.baselines) ? row.baselines : row.baselines ? [row.baselines] : [];
+  const latestBaseline = baselines.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+  return {
+    id: row.id, name: row.name, context: row.context, createdAt: row.created_at,
+    zones: (row.zones || []).map(mapZone),
+    baseline: latestBaseline ? { id: latestBaseline.id, imageData: evidenceVault.decrypt(latestBaseline.image_data), width: latestBaseline.width, height: latestBaseline.height, createdAt: latestBaseline.created_at } : null,
+  };
+}
+
+function mapIncident(row) {
+  return {
+    id: row.id, spaceId: row.space_id, zoneId: row.zone_id, zoneName: row.zone_name,
+    summary: row.summary, reason: row.reason, observableChanges: row.observable_changes,
+    confidence: Number(row.confidence), changeRatio: Number(row.change_ratio), analysisSource: row.analysis_source,
+    beforeImage: evidenceVault.decrypt(row.before_image), afterImage: evidenceVault.decrypt(row.after_image), reviewStatus: row.review_status, createdAt: row.created_at,
+  };
+}
+
+app.get("/api/health", (_request, response) => response.json({ status: "ok", authConfigured: configured, aiConfigured: Boolean(openai) }));
+
+app.post("/api/auth/signup", authLimiter, requireConfiguration, async (request, response, next) => {
+  try {
+    const input = parse(signupSchema, request.body);
+    const { data, error } = await publicSupabase.auth.signUp({ email: input.email, password: input.password, options: { data: { display_name: input.displayName } } });
+    if (error) {
+      await logSecurityEvent("signup_failure", request, null);
+      return response.status(400).json({ error: "Unable to create account with those details." });
+    }
+    if (!data.session) return response.status(202).json({ requiresEmailVerification: true });
+    await createApplicationSession(response, data.session);
+    await logSecurityEvent("signup_success", request, data.user.id);
+    response.status(201).json({ ok: true });
+  } catch (error) { next(error); }
+});
+
+app.post("/api/auth/login", authLimiter, requireConfiguration, async (request, response, next) => {
+  try {
+    const input = parse(loginSchema, request.body);
+    const { data, error } = await publicSupabase.auth.signInWithPassword(input);
+    if (error || !data.session) {
+      await logSecurityEvent("login_failure", request, null);
+      return response.status(401).json({ error: "Invalid email or password." });
+    }
+    await createApplicationSession(response, data.session);
+    await logSecurityEvent("login_success", request, data.user.id);
+    response.json({ ok: true });
+  } catch (error) { next(error); }
+});
+
+app.post("/api/auth/logout", authenticate, async (request, response, next) => {
+  try {
+    await request.auth.client.from("app_sessions").delete().eq("id", request.auth.sessionId);
+    await publicSupabase.auth.signOut({ scope: "local" });
+    clearSessionCookies(response);
+    await logSecurityEvent("logout", request, request.auth.user.id);
+    response.status(204).end();
+  } catch (error) { next(error); }
+});
+
+app.get("/api/session", authenticate, async (request, response, next) => {
+  try {
+    const profile = request.auth.profile;
+    response.json({
+      user: { id: request.auth.user.id, email: request.auth.user.email, displayName: profile.display_name, retentionDays: profile.retention_days, role: profile.role },
+      sessionPolicy: { inactivitySeconds: inactivityMinutes * 60 },
+    });
+  } catch (error) { next(error); }
+});
+
