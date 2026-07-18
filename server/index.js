@@ -446,3 +446,36 @@ app.patch("/api/account/email", authLimiter, authenticate, requireRole("owner"),
   } catch (error) { next(error); }
 });
 
+app.get("/api/account/export", authenticate, requireRole("owner"), async (request, response, next) => {
+  try {
+    const client = request.auth.client;
+    const [profile, spaces, zones, baselines, incidents, securityEvents] = await Promise.all([
+      client.from("profiles").select("display_name,retention_days,role,created_at").single(),
+      client.from("spaces").select("id,name,context,created_at"),
+      client.from("zones").select("id,space_id,name,sensitivity,x,y,width,height,created_at"),
+      client.from("baselines").select("id,space_id,image_data,width,height,created_at"),
+      client.from("incidents").select("id,space_id,zone_id,zone_name,summary,reason,observable_changes,confidence,change_ratio,analysis_source,before_image,after_image,review_status,created_at,reviewed_at"),
+      client.from("security_events").select("event_type,metadata,created_at").order("created_at", { ascending: false }),
+    ]);
+    const failure = [profile, spaces, zones, baselines, incidents, securityEvents].find((result) => result.error);
+    if (failure) throw failure.error;
+    const decryptedBaselines = baselines.data.map((baseline) => ({ ...baseline, image_data: evidenceVault.decrypt(baseline.image_data) }));
+    const decryptedIncidents = incidents.data.map((incident) => ({ ...incident, before_image: evidenceVault.decrypt(incident.before_image), after_image: evidenceVault.decrypt(incident.after_image) }));
+    const payload = { exportedAt: new Date().toISOString(), account: { id: request.auth.user.id, email: request.auth.user.email, ...profile.data }, spaces: spaces.data, zones: zones.data, baselines: decryptedBaselines, incidents: decryptedIncidents, securityEvents: securityEvents.data };
+    response.setHeader("Content-Disposition", `attachment; filename="sceneguard-export-${new Date().toISOString().slice(0, 10)}.json"`);
+    response.json(payload);
+  } catch (error) { next(error); }
+});
+
+app.delete("/api/account", authenticate, requireRole("owner"), async (request, response, next) => {
+  try {
+    parse(deleteSchema, request.body);
+    const userId = request.auth.user.id;
+    await logSecurityEvent("account_deletion_requested", request, userId);
+    const { error } = await adminSupabase.auth.admin.deleteUser(userId);
+    if (error) throw error;
+    clearSessionCookies(response);
+    response.status(204).end();
+  } catch (error) { next(error); }
+});
+
