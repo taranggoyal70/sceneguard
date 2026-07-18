@@ -759,3 +759,82 @@ async function reviewEvent(reviewStatus) {
   }
 }
 
+function updateSpaceInList(space) {
+  const index = state.spaces.findIndex((candidate) => candidate.id === space.id);
+  if (index >= 0) state.spaces[index] = space;
+}
+
+async function savePrivacy() {
+  try {
+    const result = await api("/api/account/privacy", {
+      method: "PATCH",
+      body: JSON.stringify({ retentionDays: Number($("#retention-days").value) }),
+    });
+    state.user.retentionDays = result.retentionDays;
+    showToast("Privacy setting saved. Expired evidence is removed automatically.");
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+async function changeEmail() {
+  const button = $("#change-email");
+  const input = $("#account-email");
+  if (!input.checkValidity()) {
+    input.reportValidity();
+    return;
+  }
+  button.disabled = true;
+  try {
+    const result = await api("/api/account/email", {
+      method: "PATCH",
+      body: JSON.stringify({ email: input.value.trim() }),
+    });
+    showToast(result.message);
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function exportAccount() {
+  try {
+    const response = await fetch("/api/account/export", { credentials: "same-origin" });
+    if (!response.ok) throw new Error("The export could not be created.");
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `sceneguard-export-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+async function deleteAccount() {
+  const confirmation = window.prompt('Type DELETE to permanently remove your SceneGuard account and all evidence.');
+  if (confirmation !== "DELETE") return;
+  try {
+    await api("/api/account", { method: "DELETE", body: JSON.stringify({ confirmation }) });
+    state.user = null;
+    state.spaces = [];
+    state.incidents = [];
+    showAuth();
+    showToast("Account and stored evidence permanently deleted.");
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+async function logout() {
+  window.clearTimeout(state.inactivityTimer);
+  try { await api("/api/auth/logout", { method: "POST" }); } catch {}
+  state.user = null;
+  state.spaces = [];
+  state.incidents = [];
+  showAuth();
+}
+
