@@ -412,3 +412,37 @@ app.post("/api/incidents/analyze", analyzeLimiter, authenticate, async (request,
   } catch (error) { next(error); }
 });
 
+app.patch("/api/incidents/:incidentId", authenticate, async (request, response, next) => {
+  try {
+    const incidentId = parse(z.string().uuid(), request.params.incidentId);
+    const input = parse(reviewSchema, request.body);
+    const { data, error } = await request.auth.client.from("incidents").update({ review_status: input.reviewStatus, reviewed_at: new Date().toISOString() }).eq("id", incidentId).select("*").maybeSingle();
+    if (error) throw error;
+    if (!data) return response.status(404).json({ error: "Evidence event not found." });
+    response.json({ incident: mapIncident(data) });
+  } catch (error) { next(error); }
+});
+
+app.patch("/api/account/privacy", authenticate, requireRole("owner"), async (request, response, next) => {
+  try {
+    const input = parse(privacySchema, request.body);
+    const { error } = await request.auth.client.from("profiles").update({ retention_days: input.retentionDays }).eq("user_id", request.auth.user.id);
+    if (error) throw error;
+    await logSecurityEvent("privacy_setting_changed", request, request.auth.user.id, { retentionDays: input.retentionDays });
+    response.json({ retentionDays: input.retentionDays });
+  } catch (error) { next(error); }
+});
+
+app.patch("/api/account/email", authLimiter, authenticate, requireRole("owner"), async (request, response, next) => {
+  try {
+    const input = parse(emailChangeSchema, request.body);
+    const authClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+    const { error: sessionError } = await authClient.auth.setSession({ access_token: request.auth.accessToken, refresh_token: request.auth.refreshToken });
+    if (sessionError) return response.status(401).json({ error: "Authentication required." });
+    const { error } = await authClient.auth.updateUser({ email: input.email });
+    if (error) return response.status(400).json({ error: "Unable to update email." });
+    await logSecurityEvent("email_change_requested", request, request.auth.user.id);
+    response.json({ message: "Check your email to confirm the address change." });
+  } catch (error) { next(error); }
+});
+
