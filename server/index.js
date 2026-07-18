@@ -115,3 +115,50 @@ const modelEventSchema = z.object({
   confidence: z.number().min(0).max(1),
 });
 
+function parse(schema, value) {
+  const result = schema.safeParse(value);
+  if (!result.success) {
+    const error = new Error(result.error.issues[0]?.message || "Invalid request.");
+    error.status = 400;
+    throw error;
+  }
+  return result.data;
+}
+
+function userClient(accessToken) {
+  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+function setSessionCookies(response, session, sessionId) {
+  response.cookie("sg_access", session.access_token, { ...cookieBase, maxAge: Math.min((session.expires_in || 900) * 1000, 15 * 60 * 1000) });
+  response.cookie("sg_refresh", session.refresh_token, { ...cookieBase, maxAge: 7 * 24 * 60 * 60 * 1000 });
+  response.cookie("sg_session", sessionId, { ...cookieBase, maxAge: 7 * 24 * 60 * 60 * 1000 });
+}
+
+function clearSessionCookies(response) {
+  ["sg_access", "sg_refresh", "sg_session"].forEach((name) => response.clearCookie(name, cookieBase));
+}
+
+function authenticationError(reason, message = "Authentication required.") {
+  const error = new Error(message);
+  error.status = 401;
+  error.authReason = reason;
+  return error;
+}
+
+async function logSecurityEvent(type, request, userId = null, metadata = {}) {
+  if (!adminSupabase) return false;
+  const salt = process.env.SECURITY_LOG_SALT || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const ipHash = crypto.createHmac("sha256", salt).update(request.ip || "unknown").digest("hex");
+  const safeMetadata = Object.fromEntries(Object.entries(metadata).filter(([, value]) => typeof value === "string" || typeof value === "number" || typeof value === "boolean"));
+  const { error } = await adminSupabase.from("security_events").insert({ user_id: userId, event_type: type, ip_hash: ipHash, metadata: safeMetadata });
+  if (error) {
+    console.error(JSON.stringify({ level: "error", at: new Date().toISOString(), event: "security_log_write_failed", securityEventType: type }));
+    return false;
+  }
+  return true;
+}
+
