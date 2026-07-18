@@ -394,3 +394,75 @@ async function createSpace(event) {
   }
 }
 
+async function startCamera() {
+  if (!state.activeSpace) return;
+  if (!navigator.mediaDevices?.getUserMedia) {
+    showToast("This browser does not provide camera access.", "error");
+    return;
+  }
+  stopCamera();
+  try {
+    state.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: state.cameraFacing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    });
+    const video = $("#camera-video");
+    video.srcObject = state.stream;
+    await video.play();
+    await new Promise((resolve) => {
+      if (video.readyState >= 2) resolve();
+      else video.addEventListener("loadeddata", resolve, { once: true });
+    });
+    sizeCanvases();
+    if (state.baselineImage) await restoreBaselinePixels(state.baselineImage, video.videoWidth, video.videoHeight);
+    $("#camera-empty").hidden = true;
+    $("#camera-flip").hidden = false;
+    $("#camera-button").querySelector("span").textContent = "Stop camera";
+    $("#camera-button").querySelector("svg")?.setAttribute("data-lucide", "video-off");
+    updateSetupState();
+    showToast("Camera connected. Continuous video is staying on this device.");
+  } catch {
+    showToast("Camera permission was not granted. Check the browser permission and try again.", "error");
+  }
+}
+
+function stopCamera() {
+  if (state.armed) disarmSpace();
+  state.stream?.getTracks().forEach((track) => track.stop());
+  state.stream = null;
+  const video = $("#camera-video");
+  if (video) video.srcObject = null;
+  if ($("#camera-empty")) $("#camera-empty").hidden = false;
+  if ($("#camera-flip")) $("#camera-flip").hidden = true;
+  const label = $("#camera-button span");
+  if (label) label.textContent = "Start camera";
+  updateSetupState();
+}
+
+async function flipCamera() {
+  state.cameraFacing = state.cameraFacing === "environment" ? "user" : "environment";
+  await startCamera();
+}
+
+function sizeCanvases() {
+  const video = $("#camera-video");
+  const width = video.videoWidth || 960;
+  const height = video.videoHeight || 540;
+  [$("#frame-canvas"), $("#zone-canvas")].forEach((canvas) => {
+    canvas.width = width;
+    canvas.height = height;
+  });
+  paintZones();
+}
+
+function captureFrame() {
+  const video = $("#camera-video");
+  const canvas = $("#frame-canvas");
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return {
+    pixels: context.getImageData(0, 0, canvas.width, canvas.height),
+    imageData: canvas.toDataURL("image/jpeg", 0.78),
+  };
+}
+
