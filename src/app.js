@@ -683,3 +683,79 @@ function disarmSpace() {
   paintZones();
 }
 
+async function monitorFrame() {
+  if (!state.armed || !state.stream || !state.baselinePixels || Date.now() < state.eventCooldownUntil) return;
+  const current = captureFrame();
+  const result = compareFrames(state.baselinePixels, current.pixels, state.activeSpace.zones);
+  paintZones(result.zones);
+  let candidate = null;
+  result.zones.forEach((metric) => {
+    const streak = metric.triggered ? (state.eventStreaks.get(metric.zoneId) || 0) + 1 : 0;
+    state.eventStreaks.set(metric.zoneId, streak);
+    if (streak >= 2 && (!candidate || metric.changeRatio > candidate.changeRatio)) candidate = metric;
+  });
+  if (!candidate) return;
+  state.eventCooldownUntil = Date.now() + 15000;
+  state.eventStreaks.clear();
+  await analyzeEvent(candidate, current.imageData);
+}
+
+async function analyzeEvent(metric, afterImage) {
+  const zone = state.activeSpace.zones.find((candidate) => candidate.id === metric.zoneId);
+  const status = $("#armed-status");
+  status.className = "status warning";
+  status.replaceChildren(document.createElement("span"), document.createTextNode("Analyzing change"));
+  try {
+    const result = await api("/api/incidents/analyze", {
+      method: "POST",
+      body: JSON.stringify({
+        spaceId: state.activeSpace.id,
+        zoneId: zone.id,
+        beforeImage: state.baselineImage,
+        afterImage,
+        changeRatio: metric.changeRatio,
+      }),
+    });
+    state.incidents.unshift(result.incident);
+    renderIncidents();
+    openEvent(result.incident);
+    showToast("A protected-zone change needs your review.");
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    if (state.armed) {
+      status.className = "status live";
+      status.replaceChildren(document.createElement("span"), document.createTextNode("Space armed"));
+    }
+  }
+}
+
+function openEvent(incident) {
+  state.activeEvent = incident;
+  setText("#event-title", incident.zoneName ? `${incident.zoneName} changed` : "Protected zone changed");
+  setText("#event-summary", incident.summary);
+  setText("#event-reason", incident.reason);
+  setText("#event-source", `${incident.analysisSource === "gpt-5.6" ? "GPT-5.6 evidence analysis" : "Local change analysis"} | ${Math.round(incident.confidence * 100)}% confidence`);
+  $("#event-before").src = incident.beforeImage;
+  $("#event-after").src = incident.afterImage;
+  $("#event-dialog").showModal();
+}
+
+async function reviewEvent(reviewStatus) {
+  if (!state.activeEvent) return;
+  try {
+    const result = await api(`/api/incidents/${state.activeEvent.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ reviewStatus }),
+    });
+    const index = state.incidents.findIndex((incident) => incident.id === result.incident.id);
+    if (index >= 0) state.incidents[index] = result.incident;
+    $("#event-dialog").close();
+    state.activeEvent = null;
+    renderIncidents();
+    showToast(reviewStatus === "expected" ? "Event marked as an expected change." : "Concern kept in your evidence timeline.");
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
