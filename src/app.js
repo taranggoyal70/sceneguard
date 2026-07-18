@@ -466,3 +466,135 @@ function captureFrame() {
   };
 }
 
+async function setBaseline() {
+  if (!state.stream || !state.activeSpace) return;
+  const capture = captureFrame();
+  const button = $("#baseline-button");
+  button.disabled = true;
+  try {
+    const result = await api(`/api/spaces/${state.activeSpace.id}/baseline`, {
+      method: "POST",
+      body: JSON.stringify({ imageData: capture.imageData, width: capture.pixels.width, height: capture.pixels.height }),
+    });
+    state.baselineImage = capture.imageData;
+    state.baselinePixels = capture.pixels;
+    state.activeSpace.baseline = result.baseline;
+    updateSpaceInList(state.activeSpace);
+    updateSetupState();
+    renderSpaces();
+    showToast("Baseline remembered. Now mark the areas that matter.");
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function restoreBaselinePixels(imageData, targetWidth, targetHeight) {
+  const image = new Image();
+  image.decoding = "async";
+  image.src = imageData;
+  await image.decode();
+  const canvas = $("#frame-canvas");
+  canvas.width = targetWidth || image.naturalWidth;
+  canvas.height = targetHeight || image.naturalHeight;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.drawImage(image, 0, 0);
+  state.baselinePixels = context.getImageData(0, 0, canvas.width, canvas.height);
+}
+
+function beginZoneDrawing() {
+  if (!state.baselinePixels) return;
+  state.drawing = true;
+  $("#camera-stage").classList.add("drawing");
+  $("#zone-button").classList.add("active");
+  showToast("Drag over the live view to define an attention boundary.");
+}
+
+function pointerPosition(event) {
+  const canvas = $("#zone-canvas");
+  const bounds = canvas.getBoundingClientRect();
+  return {
+    x: ((event.clientX - bounds.left) / bounds.width) * canvas.width,
+    y: ((event.clientY - bounds.top) / bounds.height) * canvas.height,
+  };
+}
+
+function handleZonePointerDown(event) {
+  if (!state.drawing) return;
+  state.drawStart = pointerPosition(event);
+  $("#zone-canvas").setPointerCapture(event.pointerId);
+}
+
+function handleZonePointerMove(event) {
+  if (!state.drawing || !state.drawStart) return;
+  const current = pointerPosition(event);
+  state.pendingRect = normalizeRect(state.drawStart, current, $("#zone-canvas").width, $("#zone-canvas").height);
+  paintZones();
+}
+
+function handleZonePointerUp(event) {
+  if (!state.drawing || !state.drawStart) return;
+  const current = pointerPosition(event);
+  const rect = normalizeRect(state.drawStart, current, $("#zone-canvas").width, $("#zone-canvas").height);
+  state.drawStart = null;
+  if (rect.width < 0.04 || rect.height < 0.04) {
+    state.pendingRect = null;
+    paintZones();
+    showToast("Draw a larger boundary so changes can be measured reliably.", "error");
+    return;
+  }
+  state.pendingRect = rect;
+  state.drawing = false;
+  $("#camera-stage").classList.remove("drawing");
+  $("#zone-form").reset();
+  $("#zone-sensitivity").value = "18";
+  setText("#sensitivity-output", "18%");
+  $("#zone-error").hidden = true;
+  $("#zone-dialog").showModal();
+}
+
+async function saveZone(event) {
+  event.preventDefault();
+  if (!state.pendingRect || !state.activeSpace) return;
+  const errorNode = $("#zone-error");
+  errorNode.hidden = true;
+  try {
+    const result = await api(`/api/spaces/${state.activeSpace.id}/zones`, {
+      method: "POST",
+      body: JSON.stringify({
+        name: $("#zone-name").value.trim(),
+        sensitivity: Number($("#zone-sensitivity").value) / 100,
+        ...state.pendingRect,
+      }),
+    });
+    state.activeSpace.zones.push(result.zone);
+    state.pendingRect = null;
+    $("#zone-dialog").close();
+    updateSpaceInList(state.activeSpace);
+    renderZones();
+    renderSpaces();
+    updateSetupState();
+    paintZones();
+    showToast("Attention boundary protected.");
+  } catch (error) {
+    errorNode.textContent = error.message;
+    errorNode.hidden = false;
+  }
+}
+
+async function removeZone(zoneId) {
+  if (state.armed) disarmSpace();
+  try {
+    await api(`/api/zones/${zoneId}`, { method: "DELETE" });
+    state.activeSpace.zones = state.activeSpace.zones.filter((zone) => zone.id !== zoneId);
+    updateSpaceInList(state.activeSpace);
+    renderZones();
+    renderSpaces();
+    updateSetupState();
+    paintZones();
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
