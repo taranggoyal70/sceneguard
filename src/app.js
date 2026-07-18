@@ -598,3 +598,88 @@ async function removeZone(zoneId) {
   }
 }
 
+function paintZones(metrics = []) {
+  const canvas = $("#zone-canvas");
+  if (!canvas) return;
+  const context = canvas.getContext("2d");
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  const zones = state.activeSpace?.zones || [];
+  [...zones.map((zone) => ({ ...zone, saved: true })), ...(state.pendingRect ? [{ ...state.pendingRect, name: "New zone", saved: false }] : [])].forEach((zone) => {
+    const metric = metrics.find((candidate) => candidate.zoneId === zone.id);
+    const changed = metric?.triggered;
+    const x = zone.x * canvas.width;
+    const y = zone.y * canvas.height;
+    const width = zone.width * canvas.width;
+    const height = zone.height * canvas.height;
+    context.fillStyle = changed ? "rgba(239,105,88,.17)" : "rgba(18,110,84,.12)";
+    context.strokeStyle = changed ? "#ef6958" : zone.saved ? "#50d29e" : "#e6b94f";
+    context.lineWidth = Math.max(2, canvas.width / 500);
+    context.setLineDash(zone.saved ? [] : [10, 7]);
+    context.fillRect(x, y, width, height);
+    context.strokeRect(x, y, width, height);
+    context.setLineDash([]);
+    const label = metric ? `${zone.name} ${percentLabel(metric.changeRatio)}` : zone.name;
+    context.font = `700 ${Math.max(12, canvas.width / 75)}px system-ui`;
+    const labelWidth = context.measureText(label).width + 18;
+    context.fillStyle = changed ? "#ef6958" : "#126e54";
+    context.fillRect(x, Math.max(0, y - 27), labelWidth, 27);
+    context.fillStyle = "#ffffff";
+    context.fillText(label, x + 9, Math.max(18, y - 8));
+  });
+}
+
+function updateSetupState() {
+  const connected = Boolean(state.stream);
+  const baseline = Boolean(state.baselinePixels || state.baselineImage);
+  const zoned = Boolean(state.activeSpace?.zones?.length);
+  const steps = [["#camera-step", connected], ["#baseline-step", baseline], ["#zone-step", zoned]];
+  steps.forEach(([selector, complete]) => $(selector)?.classList.toggle("complete", complete));
+  setText("#setup-progress", `${steps.filter(([, complete]) => complete).length}/3`);
+  $("#baseline-button").disabled = !connected || state.armed;
+  $("#zone-button").disabled = !connected || !baseline || state.armed;
+  $("#arm-button").disabled = !(connected && baseline && zoned);
+  const cameraStatus = $("#camera-status");
+  cameraStatus.className = `status ${connected ? "live" : "neutral"}`;
+  cameraStatus.replaceChildren(document.createElement("span"), document.createTextNode(connected ? "Camera live" : "Camera off"));
+  refreshIcons();
+}
+
+function armSpace() {
+  if (state.armed) {
+    disarmSpace();
+    return;
+  }
+  if (!state.stream || !state.baselinePixels || !state.activeSpace?.zones.length) return;
+  state.armed = true;
+  state.eventStreaks.clear();
+  state.eventCooldownUntil = 0;
+  const status = $("#armed-status");
+  status.className = "status live";
+  status.replaceChildren(document.createElement("span"), document.createTextNode("Space armed"));
+  $("#monitor-pulse").hidden = false;
+  $("#arm-button span").textContent = "Disarm space";
+  $("#arm-button").classList.add("danger");
+  $("#baseline-button").disabled = true;
+  $("#zone-button").disabled = true;
+  state.monitorTimer = window.setInterval(monitorFrame, 1800);
+  monitorFrame();
+  showToast("Space armed. Only meaningful zone changes create evidence.");
+}
+
+function disarmSpace() {
+  state.armed = false;
+  if (state.monitorTimer) window.clearInterval(state.monitorTimer);
+  state.monitorTimer = null;
+  state.eventStreaks.clear();
+  const status = $("#armed-status");
+  if (status) {
+    status.className = "status neutral";
+    status.replaceChildren(document.createElement("span"), document.createTextNode("Not armed"));
+  }
+  if ($("#monitor-pulse")) $("#monitor-pulse").hidden = true;
+  if ($("#arm-button span")) $("#arm-button span").textContent = "Arm space";
+  $("#arm-button")?.classList.remove("danger");
+  updateSetupState();
+  paintZones();
+}
+
