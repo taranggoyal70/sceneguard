@@ -479,3 +479,34 @@ app.delete("/api/account", authenticate, requireRole("owner"), async (request, r
   } catch (error) { next(error); }
 });
 
+app.use("/api", (_request, response) => response.status(404).json({ error: "API route not found." }));
+app.get("/vendor/lucide.js", (_request, response) => response.sendFile(path.join(root, "node_modules/lucide/dist/umd/lucide.js")));
+app.use("/assets", express.static(path.join(root, "public/assets"), { fallthrough: false, immutable: true, maxAge: "1y" }));
+app.use("/src", express.static(path.join(root, "src"), { fallthrough: false }));
+app.get("/{*path}", (_request, response) => response.sendFile(path.join(root, "index.html")));
+
+app.use((error, request, response, _next) => {
+  const status = Number(error.status) || (error.type === "entity.too.large" ? 413 : 500);
+  if (status >= 500) console.error(JSON.stringify({ level: "error", at: new Date().toISOString(), method: request.method, path: request.path, message: error.message }));
+  const publicMessage = status >= 500 && !error.expose ? "The request could not be completed." : error.message;
+  response.status(status).json({ error: publicMessage });
+});
+
+async function purgeExpiredEvidence() {
+  if (!adminSupabase) return;
+  const { data: profiles } = await adminSupabase.from("profiles").select("user_id,retention_days");
+  for (const profile of profiles || []) {
+    const cutoff = new Date(Date.now() - profile.retention_days * 24 * 60 * 60 * 1000).toISOString();
+    await adminSupabase.from("incidents").delete().eq("user_id", profile.user_id).lt("created_at", cutoff);
+  }
+}
+
+const server = app.listen(port, "127.0.0.1", () => {
+  console.log(`SceneGuard running at http://127.0.0.1:${port}`);
+  if (!configured) console.log("Supabase is not configured; the secure authentication gate will remain closed.");
+  if (!openai) console.log("OPENAI_API_KEY is not configured; evidence uses local change measurements until GPT-5.6 is enabled.");
+});
+const cleanupTimer = setInterval(() => purgeExpiredEvidence().catch(() => {}), 60 * 60 * 1000);
+cleanupTimer.unref();
+
+export { app, server };
