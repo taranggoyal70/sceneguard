@@ -53,3 +53,158 @@
         <div class="auth-trust"><i data-lucide="lock-keyhole"></i><span>Encrypted evidence</span><span class="auth-divider"></span><span>Short-lived sessions</span></div>
       </section>
     </main>
+
+    <div id="app-shell" class="app-shell" hidden>
+      <aside class="sidebar">
+        <div class="brand"><span class="brand-mark">S</span><strong>SceneGuard</strong></div>
+        <nav aria-label="Primary navigation">
+          <button class="nav-item active" data-view="live"><i data-lucide="scan-line"></i><span>Live space</span></button>
+          <button class="nav-item" data-view="incidents"><i data-lucide="list-video"></i><span>Evidence</span><span id="incident-count" class="nav-count" hidden>0</span></button>
+          <button class="nav-item" data-view="spaces"><i data-lucide="layout-grid"></i><span>Spaces</span></button>
+          <button class="nav-item" data-view="privacy"><i data-lucide="shield"></i><span>Privacy</span></button>
+        </nav>
+        <div class="sidebar-footer">
+          <div class="user-chip"><span id="user-avatar">U</span><div><strong id="user-name"></strong><small id="user-email"></small></div></div>
+          <button id="logout-button" class="icon-button" type="button" aria-label="Sign out" title="Sign out"><i data-lucide="log-out"></i></button>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div><p class="eyebrow" id="view-eyebrow">Observe, do not profile</p><h1 id="view-title">Live space</h1></div>
+          <div class="topbar-actions">
+            <span id="privacy-status" class="quiet-status"><i data-lucide="lock-keyhole"></i>Event-only capture</span>
+            <button id="create-space-button" class="button secondary" type="button"><i data-lucide="plus"></i><span>New space</span></button>
+          </div>
+        </header>
+
+        <section id="live-view" class="view active" aria-labelledby="view-title">
+          <div id="no-space-state" class="center-state">
+            <div class="state-icon"><i data-lucide="focus"></i></div>
+            <h2>Create your first protected space</h2>
+            <p>A space can be a room, entryway, desk, storage area, studio, shop floor, or anywhere else you need a reliable memory.</p>
+            <button class="button primary" data-create-space type="button"><i data-lucide="plus"></i><span>Create space</span></button>
+          </div>
+
+          <div id="monitor-workspace" class="monitor-workspace" hidden>
+            <section class="camera-column">
+              <div class="camera-toolbar">
+                <div><p class="eyebrow">Now observing</p><h2 id="active-space-name"></h2></div>
+                <div class="camera-statuses">
+                  <span id="camera-status" class="status neutral"><span></span>Camera off</span>
+                  <span id="armed-status" class="status neutral"><span></span>Not armed</span>
+                </div>
+              </div>
+
+              <div id="camera-stage" class="camera-stage">
+                <video id="camera-video" autoplay muted playsinline></video>
+                <canvas id="frame-canvas" hidden></canvas>
+                <canvas id="zone-canvas" aria-label="Protected zone editor"></canvas>
+                <div id="camera-empty" class="camera-empty">
+                  <i data-lucide="camera"></i>
+                  <strong>Your camera is off</strong>
+                  <span>Video remains on this device until an event requires review.</span>
+                </div>
+                <div id="monitor-pulse" class="monitor-pulse" hidden><span></span>Watching for meaningful change</div>
+                <button id="camera-flip" class="stage-icon-button" type="button" aria-label="Switch camera" title="Switch camera" hidden><i data-lucide="switch-camera"></i></button>
+              </div>
+
+              <div class="camera-controls" role="toolbar" aria-label="Space monitoring controls">
+                <button id="camera-button" class="button secondary" type="button"><i data-lucide="video"></i><span>Start camera</span></button>
+                <button id="baseline-button" class="button secondary" type="button" disabled><i data-lucide="scan"></i><span>Set baseline</span></button>
+                <button id="zone-button" class="button secondary" type="button" disabled><i data-lucide="square-dashed-mouse-pointer"></i><span>Draw zone</span></button>
+                <button id="arm-button" class="button primary" type="button" disabled><i data-lucide="shield-check"></i><span>Arm space</span></button>
+              </div>
+            </section>
+
+            <aside class="control-rail">
+              <section class="rail-section setup-section">
+                <div class="rail-heading"><div><p class="eyebrow">Protection setup</p><h3>Three steps to ready</h3></div><span id="setup-progress">0/3</span></div>
+                <ol class="setup-list">
+                  <li id="camera-step"><span><i data-lucide="video"></i></span><div><strong>Connect camera</strong><small>Live feed stays local</small></div><i data-lucide="circle"></i></li>
+                  <li id="baseline-step"><span><i data-lucide="scan"></i></span><div><strong>Remember the scene</strong><small>Capture the expected state</small></div><i data-lucide="circle"></i></li>
+                  <li id="zone-step"><span><i data-lucide="box-select"></i></span><div><strong>Mark what matters</strong><small>Draw at least one zone</small></div><i data-lucide="circle"></i></li>
+                </ol>
+              </section>
+
+              <section class="rail-section">
+                <div class="rail-heading"><div><p class="eyebrow">Protected zones</p><h3>Attention boundaries</h3></div><span id="zone-count">0</span></div>
+                <div id="zone-list" class="zone-list"><p class="rail-empty">Draw a boundary over a door, object, or area after setting the baseline.</p></div>
+              </section>
+
+              <section class="rail-section trust-section">
+                <div><i data-lucide="eye-off"></i><strong>No identity analysis</strong></div>
+                <p>SceneGuard reports observable changes. It does not identify faces, infer emotions, or decide whether a person is dangerous.</p>
+              </section>
+            </aside>
+          </div>
+        </section>
+
+        <section id="incidents-view" class="view" aria-labelledby="view-title">
+          <div class="section-intro"><div><h2>Evidence, not assumptions</h2><p>Every event includes the observable trigger, before-and-after evidence, confidence, and your review.</p></div></div>
+          <div id="incident-list" class="incident-list"></div>
+          <div id="incident-empty" class="center-state compact"><div class="state-icon"><i data-lucide="list-checks"></i></div><h2>No evidence captured</h2><p>Events will appear only after an armed protected zone changes.</p></div>
+        </section>
+
+        <section id="spaces-view" class="view" aria-labelledby="view-title">
+          <div class="section-intro"><div><h2>Your spaces</h2><p>Each space has its own visual memory, protected zones, retention policy, and evidence history.</p></div><button class="button primary" data-create-space type="button"><i data-lucide="plus"></i><span>Create space</span></button></div>
+          <div id="space-list" class="space-list"></div>
+          <div id="space-empty" class="center-state compact"><div class="state-icon"><i data-lucide="layout-grid"></i></div><h2>No spaces yet</h2><p>Create one to begin observing meaningful changes.</p></div>
+        </section>
+
+        <section id="privacy-view" class="view" aria-labelledby="view-title">
+          <div class="privacy-layout">
+            <section class="privacy-main">
+              <p class="eyebrow">Private by default</p><h2>Your evidence belongs to you</h2>
+              <div class="privacy-row"><span><i data-lucide="hard-drive"></i></span><div><strong>Continuous video stays on device</strong><p>Only baseline and event evidence are sent for protected-zone analysis.</p></div></div>
+              <div class="privacy-row"><span><i data-lucide="user-x"></i></span><div><strong>No biometric profiles</strong><p>Faces, identity, protected traits, and emotional state are outside the product boundary.</p></div></div>
+              <div class="privacy-row"><span><i data-lucide="timer-reset"></i></span><div><strong>Automatic evidence expiry</strong><p>Configure a short retention period for each account.</p></div></div>
+            </section>
+            <aside class="privacy-actions">
+              <h3>Account data</h3>
+              <label class="field"><span>Account email</span><input id="account-email" type="email" autocomplete="email" maxlength="254" required /></label>
+              <button id="change-email" class="button secondary wide" type="button"><i data-lucide="mail-check"></i><span>Change email</span></button>
+              <label class="field"><span>Evidence retention</span><select id="retention-days"><option value="1">1 day</option><option value="7">7 days</option><option value="30">30 days</option></select></label>
+              <button id="save-privacy" class="button secondary wide" type="button"><i data-lucide="save"></i><span>Save privacy setting</span></button>
+              <button id="export-account" class="button secondary wide" type="button"><i data-lucide="download"></i><span>Export my data</span></button>
+              <hr />
+              <h3>Delete account</h3><p>This permanently removes spaces, zones, baselines, evidence, sessions, and your authentication account.</p>
+              <button id="delete-account" class="button danger wide" type="button"><i data-lucide="trash-2"></i><span>Delete my account</span></button>
+            </aside>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="space-dialog" class="dialog">
+      <form id="space-form" method="dialog" novalidate>
+        <div class="dialog-heading"><div><p class="eyebrow">New protected space</p><h2>What should this space remember?</h2></div><button class="icon-button" value="cancel" aria-label="Close" title="Close"><i data-lucide="x"></i></button></div>
+        <label class="field"><span>Space name</span><input id="space-name" name="name" type="text" maxlength="80" required placeholder="e.g. Studio entrance" /></label>
+        <label class="field"><span>Context</span><select id="space-context" name="context"><option value="personal">Personal</option><option value="travel">Travel</option><option value="workplace">Workplace</option><option value="hospitality">Hospitality</option><option value="retail">Retail</option><option value="other">Other</option></select></label>
+        <label class="consent-check"><input id="space-consent" type="checkbox" required /><span>I have permission to monitor this space and will provide any required notice.</span></label>
+        <p id="space-error" class="form-error" role="alert" hidden></p>
+        <div class="dialog-actions"><button class="button secondary" value="cancel" type="button" data-close-dialog>Cancel</button><button class="button primary" type="submit"><span>Create and connect camera</span><i data-lucide="arrow-right"></i></button></div>
+      </form>
+    </dialog>
+
+    <dialog id="zone-dialog" class="dialog small">
+      <form id="zone-form" method="dialog" novalidate>
+        <div class="dialog-heading"><div><p class="eyebrow">Attention boundary</p><h2>Name this zone</h2></div><button class="icon-button" value="cancel" aria-label="Close" title="Close"><i data-lucide="x"></i></button></div>
+        <label class="field"><span>Zone name</span><input id="zone-name" name="name" type="text" maxlength="60" required placeholder="e.g. Entry door" /></label>
+        <label class="field"><span>Change sensitivity</span><input id="zone-sensitivity" name="sensitivity" type="range" min="5" max="40" value="18" /><output id="sensitivity-output">18%</output></label>
+        <p id="zone-error" class="form-error" role="alert" hidden></p>
+        <div class="dialog-actions"><button class="button secondary" value="cancel" type="button" data-close-zone>Cancel</button><button class="button primary" type="submit">Protect zone</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="event-dialog" class="dialog event-dialog">
+      <div class="dialog-heading"><div><p class="eyebrow">Observable event</p><h2 id="event-title">Protected zone changed</h2></div><button id="close-event" class="icon-button" aria-label="Close" title="Close"><i data-lucide="x"></i></button></div>
+      <div class="evidence-pair"><figure><img id="event-before" alt="Scene baseline before the event" /><figcaption>Before</figcaption></figure><figure><img id="event-after" alt="Scene after the event" /><figcaption>Event</figcaption></figure></div>
+      <div class="event-summary"><span id="event-severity" class="status warning"><span></span>Review needed</span><h3 id="event-summary"></h3><p id="event-reason"></p><small id="event-source"></small></div>
+      <div class="dialog-actions split"><button id="mark-expected" class="button secondary" type="button"><i data-lucide="check"></i><span>Expected change</span></button><button id="mark-concern" class="button primary" type="button"><i data-lucide="bell-ring"></i><span>Keep as concern</span></button></div>
+    </dialog>
+
+    <script src="/vendor/lucide.js"></script>
+    <script type="module" src="/src/app.js"></script>
+  </body>
+</html>
