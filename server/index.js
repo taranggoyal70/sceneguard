@@ -306,3 +306,63 @@ app.get("/api/session", authenticate, async (request, response, next) => {
   } catch (error) { next(error); }
 });
 
+app.get("/api/spaces", authenticate, async (request, response, next) => {
+  try {
+    const { data, error } = await request.auth.client.from("spaces").select("id,name,context,created_at,zones(id,name,sensitivity,x,y,width,height),baselines(id,image_data,width,height,created_at)").order("created_at", { ascending: false });
+    if (error) throw error;
+    response.json({ spaces: data.map(mapSpace) });
+  } catch (error) { next(error); }
+});
+
+app.post("/api/spaces", authenticate, async (request, response, next) => {
+  try {
+    const input = parse(spaceSchema, request.body);
+    const { data, error } = await request.auth.client.from("spaces").insert({ user_id: request.auth.user.id, ...input }).select("id,name,context,created_at").single();
+    if (error) throw error;
+    response.status(201).json({ space: mapSpace({ ...data, zones: [], baselines: [] }) });
+  } catch (error) { next(error); }
+});
+
+app.post("/api/spaces/:spaceId/baseline", authenticate, async (request, response, next) => {
+  try {
+    const spaceId = parse(z.string().uuid(), request.params.spaceId);
+    const input = parse(baselineSchema, request.body);
+    const { data: ownedSpace } = await request.auth.client.from("spaces").select("id").eq("id", spaceId).maybeSingle();
+    if (!ownedSpace) return response.status(404).json({ error: "Space not found." });
+    const encryptedImage = evidenceVault.encrypt(input.imageData);
+    const { data, error } = await request.auth.client.from("baselines").upsert({ user_id: request.auth.user.id, space_id: spaceId, image_data: encryptedImage, width: input.width, height: input.height, created_at: new Date().toISOString() }, { onConflict: "space_id" }).select("id,image_data,width,height,created_at").single();
+    if (error) throw error;
+    response.status(201).json({ baseline: { id: data.id, imageData: evidenceVault.decrypt(data.image_data), width: data.width, height: data.height, createdAt: data.created_at } });
+  } catch (error) { next(error); }
+});
+
+app.post("/api/spaces/:spaceId/zones", authenticate, async (request, response, next) => {
+  try {
+    const spaceId = parse(z.string().uuid(), request.params.spaceId);
+    const input = parse(zoneSchema, request.body);
+    const { data: ownedSpace } = await request.auth.client.from("spaces").select("id").eq("id", spaceId).maybeSingle();
+    if (!ownedSpace) return response.status(404).json({ error: "Space not found." });
+    const { data, error } = await request.auth.client.from("zones").insert({ user_id: request.auth.user.id, space_id: spaceId, ...input }).select("id,name,sensitivity,x,y,width,height").single();
+    if (error) throw error;
+    response.status(201).json({ zone: mapZone(data) });
+  } catch (error) { next(error); }
+});
+
+app.delete("/api/zones/:zoneId", authenticate, async (request, response, next) => {
+  try {
+    const zoneId = parse(z.string().uuid(), request.params.zoneId);
+    const { data, error } = await request.auth.client.from("zones").delete().eq("id", zoneId).select("id");
+    if (error) throw error;
+    if (!data.length) return response.status(404).json({ error: "Zone not found." });
+    response.status(204).end();
+  } catch (error) { next(error); }
+});
+
+app.get("/api/incidents", authenticate, async (request, response, next) => {
+  try {
+    const { data, error } = await request.auth.client.from("incidents").select("*").order("created_at", { ascending: false }).limit(100);
+    if (error) throw error;
+    response.json({ incidents: data.map(mapIncident) });
+  } catch (error) { next(error); }
+});
+
