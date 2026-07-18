@@ -162,3 +162,73 @@ async function logSecurityEvent(type, request, userId = null, metadata = {}) {
   return true;
 }
 
+function requireConfiguration(_request, _response, next) {
+  if (!configured) {
+    const error = new Error("SceneGuard authentication is not configured. Add the server-side Supabase environment variables.");
+    error.status = 503;
+    error.expose = true;
+    return next(error);
+  }
+  next();
+}
+
+async function createApplicationSession(response, session) {
+  const sessionId = crypto.randomUUID();
+  const client = userClient(session.access_token);
+  const { error } = await client.from("app_sessions").insert({ id: sessionId, user_id: session.user.id, last_seen_at: new Date().toISOString() });
+  if (error) throw new Error("Unable to establish a secure session.");
+  setSessionCookies(response, session, sessionId);
+}
+
+async function authenticate(request, response, next) {
+  try {
+    if (!configured) return requireConfiguration(request, response, next);
+    const accessResult = accessTokenSchema.safeParse(request.cookies.sg_access);
+    const refreshResult = refreshTokenSchema.safeParse(request.cookies.sg_refresh);
+    const sessionResult = sessionIdSchema.safeParse(request.cookies.sg_session);
+    if (!accessResult.success || !refreshResult.success || !sessionResult.success) {
+      const invalidCookies = [!accessResult.success && "access", !refreshResult.success && "refresh", !sessionResult.success && "session"].filter(Boolean).join(",");
+      throw authenticationError(`invalid_session_cookie:${invalidCookies}`);
+    }
+    let accessToken = accessResult.data;
+    let refreshToken = refreshResult.data;
+    const sessionId = sessionResult.data;
+    let authResult = await publicSupabase.auth.getUser(accessToken);
+    if (authResult.error) {
+      const refreshed = await publicSupabase.auth.refreshSession({ refresh_token: refreshToken });
+      if (refreshed.error || !refreshed.data.session) {
+        throw authenticationError("token_refresh_failed");
+      }
+      accessToken = refreshed.data.session.access_token;
+      refreshToken = refreshed.data.session.refresh_token;
+      setSessionCookies(response, refreshed.data.session, sessionId);
+      authResult = { data: { user: refreshed.data.session.user }, error: null };
+    }
+    const client = userClient(accessToken);
+    const { data: applicationSession, error: sessionError } = await client.from("app_sessions").select("id,last_seen_at").eq("id", sessionId).maybeSingle();
+    if (sessionError || !applicationSession) {
+      throw authenticationError("application_session_missing");
+    }
+    const inactiveFor = Date.now() - new Date(applicationSession.last_seen_at).getTime();
+    if (inactiveFor > inactivityMinutes * 60 * 1000) {
+      await client.from("app_sessions").delete().eq("id", sessionId);
+      clearSessionCookies(response);
+      await logSecurityEvent("inactivity_logout", request, authResult.data.user.id);
+      throw authenticationError("session_inactive", "Your session expired due to inactivity.");
+    }
+    const [{ error: touchError }, { data: profile, error: profileError }] = await Promise.all([
+      client.from("app_sessions").update({ last_seen_at: new Date().toISOString() }).eq("id", sessionId),
+      client.from("profiles").select("display_name,retention_days,role").eq("user_id", authResult.data.user.id).single(),
+    ]);
+    if (touchError || profileError || !profile) throw new Error("Unable to verify account authorization.");
+    request.auth = { user: authResult.data.user, client, accessToken, refreshToken, sessionId, profile, role: profile.role };
+    next();
+  } catch (error) {
+    if (error.status === 401) {
+      clearSessionCookies(response);
+      console.warn(JSON.stringify({ level: "warn", at: new Date().toISOString(), event: "authentication_rejected", reason: error.authReason || "unknown" }));
+    }
+    next(error);
+  }
+}
+
