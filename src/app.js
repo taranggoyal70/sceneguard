@@ -350,3 +350,47 @@ function renderIncidents() {
   });
 }
 
+async function selectSpace(spaceId) {
+  if (state.armed) disarmSpace();
+  state.activeSpace = state.spaces.find((space) => space.id === spaceId) || null;
+  state.baselineImage = state.activeSpace?.baseline?.imageData || null;
+  state.baselinePixels = null;
+  if (state.baselineImage) await restoreBaselinePixels(state.baselineImage);
+  setView("live");
+  renderLiveSpace();
+}
+
+function openCreateSpace() {
+  $("#space-form").reset();
+  $("#space-error").hidden = true;
+  $("#space-dialog").showModal();
+}
+
+async function createSpace(event) {
+  event.preventDefault();
+  const errorNode = $("#space-error");
+  errorNode.hidden = true;
+  if (!$("#space-consent").checked) {
+    errorNode.textContent = "Confirm that you have permission to monitor this space.";
+    errorNode.hidden = false;
+    return;
+  }
+  try {
+    const result = await api("/api/spaces", {
+      method: "POST",
+      body: JSON.stringify({ name: $("#space-name").value.trim(), context: $("#space-context").value }),
+    });
+    state.spaces.unshift(result.space);
+    state.activeSpace = result.space;
+    state.baselineImage = null;
+    state.baselinePixels = null;
+    $("#space-dialog").close();
+    setView("live");
+    renderAll();
+    await startCamera();
+  } catch (error) {
+    errorNode.textContent = error.message;
+    errorNode.hidden = false;
+  }
+}
+
