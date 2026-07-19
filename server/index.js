@@ -16,6 +16,7 @@ import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, passwordPolicyErrors } from "
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const port = Number(process.env.PORT || 5173);
+const host = process.env.HOST || "127.0.0.1";
 const production = process.env.NODE_ENV === "production";
 const trustedOrigins = new Set((process.env.APP_ORIGINS || `http://127.0.0.1:${port},http://localhost:${port}`).split(",").map((value) => value.trim()).filter(Boolean));
 if (production && [...trustedOrigins].some((origin) => !origin.startsWith("https://"))) throw new Error("Production APP_ORIGINS must use HTTPS.");
@@ -30,6 +31,12 @@ const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPE
 const app = express();
 app.disable("x-powered-by");
 app.set("trust proxy", production ? 1 : false);
+app.use((request, response, next) => {
+  const suppliedId = request.get("x-request-id");
+  request.requestId = suppliedId && /^[A-Za-z0-9._-]{8,128}$/.test(suppliedId) ? suppliedId : crypto.randomUUID();
+  response.setHeader("X-Request-Id", request.requestId);
+  next();
+});
 app.use((request, response, next) => {
   if (production && !request.secure) return response.status(426).json({ error: "HTTPS is required." });
   next();
@@ -63,7 +70,7 @@ app.use((request, response, next) => {
     response.setHeader("Access-Control-Allow-Origin", origin);
     response.setHeader("Access-Control-Allow-Credentials", "true");
     response.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
-    response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    response.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Request-Id");
   }
   response.setHeader("Vary", "Origin");
   response.setHeader("Permissions-Policy", "camera=(self), microphone=(), geolocation=(), browsing-topics=()");
@@ -256,6 +263,25 @@ function mapIncident(row) {
 }
 
 app.get("/api/health", (_request, response) => response.json({ status: "ok", authConfigured: configured, aiConfigured: Boolean(openai) }));
+app.get("/api/ready", async (_request, response) => {
+  let accountsOperational = false;
+  if (configured) {
+    try {
+      const { error } = await adminSupabase.from("profiles").select("user_id").limit(1).abortSignal(AbortSignal.timeout(2500));
+      accountsOperational = !error;
+    } catch {
+      accountsOperational = false;
+    }
+  }
+  response.json({
+    status: "ready",
+    capabilities: {
+      localTrial: true,
+      accounts: { configured, operational: accountsOperational },
+      aiAnalysis: { configured: Boolean(openai) },
+    },
+  });
+});
 
 app.post("/api/auth/signup", authLimiter, requireConfiguration, async (request, response, next) => {
   try {
@@ -487,7 +513,7 @@ app.get("/{*path}", (_request, response) => response.sendFile(path.join(root, "i
 
 app.use((error, request, response, _next) => {
   const status = Number(error.status) || (error.type === "entity.too.large" ? 413 : 500);
-  if (status >= 500) console.error(JSON.stringify({ level: "error", at: new Date().toISOString(), method: request.method, path: request.path, message: error.message }));
+  if (status >= 500) console.error(JSON.stringify({ level: "error", at: new Date().toISOString(), requestId: request.requestId, method: request.method, path: request.path, message: error.message }));
   const publicMessage = status >= 500 && !error.expose ? "The request could not be completed." : error.message;
   response.status(status).json({ error: publicMessage });
 });
@@ -501,8 +527,8 @@ async function purgeExpiredEvidence() {
   }
 }
 
-const server = app.listen(port, "127.0.0.1", () => {
-  console.log(`SceneGuard running at http://127.0.0.1:${port}`);
+const server = app.listen(port, host, () => {
+  console.log(`SceneGuard running at http://${host}:${port}`);
   if (!configured) console.log("Supabase is not configured; the secure authentication gate will remain closed.");
   if (!openai) console.log("OPENAI_API_KEY is not configured; evidence uses local change measurements until GPT-5.6 is enabled.");
 });

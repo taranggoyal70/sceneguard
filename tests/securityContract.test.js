@@ -6,6 +6,7 @@ const migrationUrl = new URL("../supabase/migrations/202607170001_sceneguard.sql
 const hardeningMigrationUrl = new URL("../supabase/migrations/202607170002_security_hardening.sql", import.meta.url);
 const serverUrl = new URL("../server/index.js", import.meta.url);
 const clientUrl = new URL("../src/app.js", import.meta.url);
+const dockerfileUrl = new URL("../Dockerfile", import.meta.url);
 
 test("every user-owned table enables row-level security", async () => {
   const sql = await readFile(migrationUrl, "utf8");
@@ -58,6 +59,29 @@ test("transport, API limits, email-change logging, and safe rendering are enforc
   assert.match(source, /refreshTokenSchema\.safeParse/);
   assert.match(client, /textContent = value/);
   assert.doesNotMatch(client, /innerHTML|localStorage|sessionStorage/);
+});
+
+test("the private local trial remains available when account bootstrap fails", async () => {
+  const client = await readFile(clientUrl, "utf8");
+  assert.match(client, /function startLocalTrial\(\)/);
+  assert.match(client, /catch \(error\) \{\s*showAuth\(\);\s*if \(error\.status !== 401\)/);
+  assert.match(client, /removeAttribute\("src"\)/);
+  assert.match(client, /clearRect\(0, 0, canvas\.width, canvas\.height\)/);
+  assert.doesNotMatch(client, /localStorage|sessionStorage/);
+});
+
+test("readiness probes configured account storage with a bounded wait", async () => {
+  const source = await readFile(serverUrl, "utf8");
+  assert.match(source, /from\("profiles"\)\.select\("user_id"\)/);
+  assert.match(source, /abortSignal\(AbortSignal\.timeout\(2500\)\)/);
+  assert.match(source, /accounts: \{ configured, operational: accountsOperational \}/);
+});
+
+test("the production container runs unprivileged and its internal health check models HTTPS proxying", async () => {
+  const dockerfile = await readFile(dockerfileUrl, "utf8");
+  assert.match(dockerfile, /USER node/);
+  assert.match(dockerfile, /HEALTHCHECK[^\n]+\/api\/ready/);
+  assert.match(dockerfile, /'X-Forwarded-Proto': 'https'/);
 });
 
 test("GPT analysis prompt explicitly excludes identity, emotion, intent, and danger inference", async () => {

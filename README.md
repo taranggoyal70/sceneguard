@@ -4,6 +4,8 @@ SceneGuard is a privacy-first spatial memory and explainable safety-boundary app
 
 The product reports observable events. It does not identify people, infer emotion or intent, label someone suspicious, or predict crime.
 
+Anyone can choose **Try privately on this device** to complete the real camera workflow without an account. Spaces, baselines, zones, and event evidence stay in browser memory for that tab and are never uploaded. Account users can add encrypted persistence, automatic retention, and optional AI analysis.
+
 ## The Live Loop
 
 1. Create a space and confirm permission to monitor it.
@@ -20,6 +22,7 @@ No demo incidents or fictional users are shipped. Evidence is created only by re
 ## Architecture
 
 - **Client:** dependency-light HTML, CSS, and JavaScript using `getUserMedia`, Canvas, and a pure scene-comparison engine.
+- **Private trial:** a complete on-device workflow with no signup, sample data, browser storage, or network writes.
 - **Server:** Express with strict CORS, CSP and security headers, rate limiting, schema-whitelist validation, generic errors, and server-only provider credentials.
 - **Authentication:** Supabase Auth proxied through the server. Access, refresh, and application-session identifiers use `HttpOnly`, `SameSite=Strict` cookies; no browser storage is used.
 - **Authorization:** PostgreSQL Row Level Security plus explicit ownership queries on every resource route. Account-level mutations require the immutable `owner` role; database column grants prevent self-promotion.
@@ -29,7 +32,7 @@ No demo incidents or fictional users are shipped. Evidence is created only by re
 
 ## Configure
 
-Create a Supabase project, apply [`supabase/migrations/202607170001_sceneguard.sql`](supabase/migrations/202607170001_sceneguard.sql), and copy `.env.example` to `.env`. All credential values remain server-side and `.env` is excluded from git.
+Create a Supabase project, apply every SQL file in [`supabase/migrations`](supabase/migrations) in filename order, and copy `.env.example` to `.env`. All credential values remain server-side and `.env` is excluded from git.
 
 Required:
 
@@ -39,10 +42,9 @@ SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY
 SECURITY_LOG_SALT
 DATA_ENCRYPTION_KEY
-OPENAI_API_KEY
 ```
 
-Generate `DATA_ENCRYPTION_KEY` with `openssl rand -base64 32`. Production `APP_ORIGINS` values must use HTTPS, and the server rejects non-HTTPS production requests even behind a trusted proxy.
+`OPENAI_API_KEY` is optional. Without it, SceneGuard uses the local detector's explainable change measurement. Generate `DATA_ENCRYPTION_KEY` and a separate `SECURITY_LOG_SALT` with `openssl rand -base64 32`. Production `APP_ORIGINS` values must use HTTPS, and the server rejects non-HTTPS production requests even behind a trusted proxy.
 
 The Supabase project's JWT expiry should be set to 900 seconds. SceneGuard additionally invalidates application sessions after 15 minutes without activity.
 
@@ -53,7 +55,11 @@ npm install
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`. Camera access works on localhost. The server starts without credentials but deliberately keeps the authentication gate closed; it never falls back to insecure demo authentication.
+Open `http://127.0.0.1:5173`. Camera access works on localhost. The server starts without credentials and keeps the account gate closed, while the private local trial remains fully usable.
+
+## Deploy
+
+The repository includes a production Docker image, process health and readiness endpoints, request correlation IDs, and an operating checklist. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the full environment and release contract.
 
 ## Verify
 
@@ -64,7 +70,7 @@ npm run test:integration
 
 The integration suite requires the local Supabase stack and the ignored `.env` configuration. It creates isolated synthetic users, attempts cross-user reads and mutations, verifies encrypted database values, and deletes every test account when finished.
 
-Tests cover protected-zone frame comparison, ignored out-of-zone changes, password-policy parity, authenticated evidence encryption, RBAC denial, RLS presence, live cross-user isolation, secure session cookies, the AI safety boundary, CORS rejection, security headers, and fail-closed provider configuration.
+Tests cover the private trial model, protected-zone frame comparison, ignored out-of-zone changes, password-policy parity, authenticated evidence encryption, RBAC denial, RLS presence, live cross-user isolation, secure session cookies, the AI safety boundary, CORS rejection, request correlation, readiness reporting, security headers, and fail-closed account configuration.
 
 ## Three-Minute Demo
 
