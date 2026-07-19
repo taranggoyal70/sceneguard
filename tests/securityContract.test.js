@@ -65,7 +65,16 @@ test("the private local trial remains available when account bootstrap fails", a
   const client = await readFile(clientUrl, "utf8");
   assert.match(client, /function startLocalTrial\(\)/);
   assert.match(client, /catch \(error\) \{\s*showAuth\(\);\s*if \(error\.status !== 401\)/);
+  assert.match(client, /removeAttribute\("src"\)/);
+  assert.match(client, /clearRect\(0, 0, canvas\.width, canvas\.height\)/);
   assert.doesNotMatch(client, /localStorage|sessionStorage/);
+});
+
+test("readiness probes configured account storage with a bounded wait", async () => {
+  const source = await readFile(serverUrl, "utf8");
+  assert.match(source, /from\("profiles"\)\.select\("user_id"\)/);
+  assert.match(source, /abortSignal\(AbortSignal\.timeout\(2500\)\)/);
+  assert.match(source, /accounts: \{ configured, operational: accountsOperational \}/);
 });
 
 test("the production container runs unprivileged and its internal health check models HTTPS proxying", async () => {

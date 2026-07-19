@@ -31,7 +31,11 @@ test("readiness reports available product capabilities", async () => {
   assert.equal(response.headers.get("x-request-id"), "startup-check-01");
   assert.deepEqual(await response.json(), {
     status: "ready",
-    capabilities: { localTrial: true, accounts: false, aiAnalysis: false },
+    capabilities: {
+      localTrial: true,
+      accounts: { configured: false, operational: false },
+      aiAnalysis: { configured: false },
+    },
   });
 });
 

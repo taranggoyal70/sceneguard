@@ -890,6 +890,15 @@ async function logout() {
 
 function clearSession() {
   stopCamera();
+  for (const selector of ["#event-before", "#event-after"]) $(selector)?.removeAttribute("src");
+  for (const selector of ["#frame-canvas", "#zone-canvas"]) {
+    const canvas = $(selector);
+    canvas?.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
+  }
+  for (const selector of ["#event-dialog", "#zone-dialog", "#space-dialog"]) {
+    const dialog = $(selector);
+    if (dialog?.open) dialog.close();
+  }
   state.user = null;
   state.spaces = [];
   state.incidents = [];
@@ -897,6 +906,10 @@ function clearSession() {
   state.activeEvent = null;
   state.baselineImage = null;
   state.baselinePixels = null;
+  state.pendingRect = null;
+  state.drawing = false;
+  state.eventStreaks.clear();
+  state.eventCooldownUntil = 0;
   state.localTrial = false;
 }
 

@@ -6,7 +6,7 @@ SceneGuard has two product paths. The private local trial works without provider
 
 SceneGuard runs on Node.js 20 or newer. The process serves the web application and API from one port. Set `HOST=0.0.0.0` in a container and let the platform provide `PORT` when required.
 
-`GET /api/health` confirms that the process is alive. `GET /api/ready` reports the product capabilities available in the current environment. Both endpoints return an `X-Request-Id` header that can be correlated with server error logs.
+`GET /api/health` confirms that the process is alive. `GET /api/ready` reports the product capabilities available in the current environment and performs a time-bounded database probe when accounts are configured. Both endpoints return an `X-Request-Id` header that can be correlated with server error logs.
 
 ## Environment
 
@@ -38,17 +38,19 @@ Build and verify the image locally:
 
 ```bash
 docker build -t sceneguard .
-docker run --rm -p 5173:5173 --env-file .env -e HOST=0.0.0.0 sceneguard
+docker run --rm -p 5173:5173 --env-file .env -e NODE_ENV=development -e HOST=0.0.0.0 -e APP_ORIGINS=http://127.0.0.1:5173 sceneguard
 ```
 
-Open `http://127.0.0.1:5173/api/ready` and confirm that the expected capabilities are enabled. The image runs as the unprivileged Node user and includes a health check.
+Open `http://127.0.0.1:5173/api/ready` to smoke-test the local image composition. This command deliberately overrides the image's production transport policy because the local check uses HTTP.
+
+In production, keep `NODE_ENV=production`, terminate TLS at a trusted reverse proxy, set `APP_ORIGINS` to the exact public HTTPS origin, and forward `X-Forwarded-Proto`. Check readiness through the public HTTPS URL and confirm that `accounts.operational` is true when account features are expected. The image runs as the unprivileged Node user and includes an internal health check that models the trusted proxy header.
 
 ## Release checklist
 
 1. Run `npm ci` and `npm run verify` from a clean checkout.
 2. Apply pending Supabase migrations and retain the migration output in the release record.
 3. Set the exact HTTPS origin in `APP_ORIGINS` and confirm that the reverse proxy supplies `X-Forwarded-Proto`.
-4. Confirm that `/api/ready` reports accounts and AI analysis as expected.
+4. Confirm that `/api/ready` reports account configuration and operational status separately, and reports AI analysis configuration as expected.
 5. Complete a real camera flow from baseline through human review using authorized test space.
 6. Export and delete the test account, then confirm that expired evidence cleanup is running.
 7. Record the deployed commit, environment owner, rollback image, and evidence-key rotation procedure.

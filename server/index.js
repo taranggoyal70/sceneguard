@@ -263,10 +263,25 @@ function mapIncident(row) {
 }
 
 app.get("/api/health", (_request, response) => response.json({ status: "ok", authConfigured: configured, aiConfigured: Boolean(openai) }));
-app.get("/api/ready", (_request, response) => response.json({
-  status: "ready",
-  capabilities: { localTrial: true, accounts: configured, aiAnalysis: Boolean(openai) },
-}));
+app.get("/api/ready", async (_request, response) => {
+  let accountsOperational = false;
+  if (configured) {
+    try {
+      const { error } = await adminSupabase.from("profiles").select("user_id").limit(1).abortSignal(AbortSignal.timeout(2500));
+      accountsOperational = !error;
+    } catch {
+      accountsOperational = false;
+    }
+  }
+  response.json({
+    status: "ready",
+    capabilities: {
+      localTrial: true,
+      accounts: { configured, operational: accountsOperational },
+      aiAnalysis: { configured: Boolean(openai) },
+    },
+  });
+});
 
 app.post("/api/auth/signup", authLimiter, requireConfiguration, async (request, response, next) => {
   try {
