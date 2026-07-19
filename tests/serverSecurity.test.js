@@ -22,6 +22,17 @@ test("health endpoint reports provider configuration without exposing secrets", 
   assert.equal(response.status, 200);
   assert.deepEqual(body, { status: "ok", authConfigured: false, aiConfigured: false });
   assert.equal(JSON.stringify(body).includes("key"), false);
+  assert.match(response.headers.get("x-request-id"), /^[0-9a-f-]{36}$/);
+});
+
+test("readiness reports available product capabilities", async () => {
+  const response = await fetch(`${baseUrl}/api/ready`, { headers: { "X-Request-Id": "startup-check-01" } });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("x-request-id"), "startup-check-01");
+  assert.deepEqual(await response.json(), {
+    status: "ready",
+    capabilities: { localTrial: true, accounts: false, aiAnalysis: false },
+  });
 });
 
 test("security headers prevent framing and restrict script execution", async () => {
@@ -44,7 +55,7 @@ test("trusted CORS preflights allow only the supported credentialed API surface"
   assert.equal(response.status, 204);
   assert.equal(response.headers.get("access-control-allow-origin"), "http://trusted.test");
   assert.equal(response.headers.get("access-control-allow-credentials"), "true");
-  assert.equal(response.headers.get("access-control-allow-headers"), "Content-Type");
+  assert.equal(response.headers.get("access-control-allow-headers"), "Content-Type, X-Request-Id");
   assert.match(response.headers.get("access-control-allow-methods"), /PATCH/);
 });
 
