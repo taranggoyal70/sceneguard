@@ -6,6 +6,7 @@ const migrationUrl = new URL("../supabase/migrations/202607170001_sceneguard.sql
 const hardeningMigrationUrl = new URL("../supabase/migrations/202607170002_security_hardening.sql", import.meta.url);
 const serverUrl = new URL("../server/index.js", import.meta.url);
 const clientUrl = new URL("../src/app.js", import.meta.url);
+const dockerfileUrl = new URL("../Dockerfile", import.meta.url);
 
 test("every user-owned table enables row-level security", async () => {
   const sql = await readFile(migrationUrl, "utf8");
@@ -65,6 +66,13 @@ test("the private local trial remains available when account bootstrap fails", a
   assert.match(client, /function startLocalTrial\(\)/);
   assert.match(client, /catch \(error\) \{\s*showAuth\(\);\s*if \(error\.status !== 401\)/);
   assert.doesNotMatch(client, /localStorage|sessionStorage/);
+});
+
+test("the production container runs unprivileged and its internal health check models HTTPS proxying", async () => {
+  const dockerfile = await readFile(dockerfileUrl, "utf8");
+  assert.match(dockerfile, /USER node/);
+  assert.match(dockerfile, /HEALTHCHECK[^\n]+\/api\/ready/);
+  assert.match(dockerfile, /'X-Forwarded-Proto': 'https'/);
 });
 
 test("GPT analysis prompt explicitly excludes identity, emotion, intent, and danger inference", async () => {
