@@ -50,6 +50,11 @@
           <button id="auth-submit" class="button primary wide auth-submit" type="submit"><span>Sign in</span><i data-lucide="arrow-right"></i></button>
           <button id="auth-mode" class="text-button auth-mode" type="button"><span id="auth-mode-prefix">New to SceneGuard?</span><span id="auth-mode-action">Create account</span></button>
         </form>
+        <div class="auth-or"><span>or explore first</span></div>
+        <div class="local-trial-entry">
+          <button id="local-trial-button" class="button secondary wide local-trial-button" type="button"><i data-lucide="scan-face"></i><span>Try privately on this device</span><i data-lucide="arrow-right"></i></button>
+          <p>No account, cloud, or sample data. Use your real camera and closing this tab clears the session.</p>
+        </div>
         <div class="auth-trust"><i data-lucide="lock-keyhole"></i><span>Encrypted evidence</span><span class="auth-divider"></span><span>Short-lived sessions</span></div>
       </section>
     </main>
@@ -77,6 +82,12 @@
             <button id="create-space-button" class="button secondary" type="button"><i data-lucide="plus"></i><span>New space</span></button>
           </div>
         </header>
+
+        <section id="local-mode-banner" class="local-mode-banner" aria-label="Local trial status" hidden>
+          <span class="local-mode-seal"><i data-lucide="hard-drive"></i></span>
+          <div><strong>Private local trial</strong><p>Your camera, scene memory, zones, and evidence stay in this tab. Nothing is uploaded.</p></div>
+          <span class="local-mode-state"><span></span>On device</span>
+        </section>
 
         <section id="live-view" class="view active" aria-labelledby="view-title">
           <div id="no-space-state" class="center-state">
@@ -161,14 +172,14 @@
               <div class="privacy-row"><span><i data-lucide="timer-reset"></i></span><div><strong>Automatic evidence expiry</strong><p>Configure a short retention period for each account.</p></div></div>
             </section>
             <aside class="privacy-actions">
-              <h3>Account data</h3>
-              <label class="field"><span>Account email</span><input id="account-email" type="email" autocomplete="email" maxlength="254" required /></label>
-              <button id="change-email" class="button secondary wide" type="button"><i data-lucide="mail-check"></i><span>Change email</span></button>
-              <label class="field"><span>Evidence retention</span><select id="retention-days"><option value="1">1 day</option><option value="7">7 days</option><option value="30">30 days</option></select></label>
-              <button id="save-privacy" class="button secondary wide" type="button"><i data-lucide="save"></i><span>Save privacy setting</span></button>
+              <h3 id="account-data-title">Account data</h3>
+              <label class="field" data-account-only><span>Account email</span><input id="account-email" type="email" autocomplete="email" maxlength="254" required /></label>
+              <button id="change-email" class="button secondary wide" type="button" data-account-only><i data-lucide="mail-check"></i><span>Change email</span></button>
+              <label class="field" data-account-only><span>Evidence retention</span><select id="retention-days"><option value="1">1 day</option><option value="7">7 days</option><option value="30">30 days</option></select></label>
+              <button id="save-privacy" class="button secondary wide" type="button" data-account-only><i data-lucide="save"></i><span>Save privacy setting</span></button>
               <button id="export-account" class="button secondary wide" type="button"><i data-lucide="download"></i><span>Export my data</span></button>
               <hr />
-              <h3>Delete account</h3><p>This permanently removes spaces, zones, baselines, evidence, sessions, and your authentication account.</p>
+              <h3 id="delete-account-title">Delete account</h3><p id="delete-account-copy">This permanently removes spaces, zones, baselines, evidence, sessions, and your authentication account.</p>
               <button id="delete-account" class="button danger wide" type="button"><i data-lucide="trash-2"></i><span>Delete my account</span></button>
             </aside>
           </div>

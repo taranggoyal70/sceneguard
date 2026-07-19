@@ -1,5 +1,14 @@
 import { compareFrames, normalizeRect, percentLabel } from "./sceneEngine.js";
 import { passwordPolicyErrors } from "./securityPolicy.js";
+import {
+  createLocalBaseline,
+  createLocalExport,
+  createLocalIncident,
+  createLocalSpace,
+  createLocalUser,
+  createLocalZone,
+  reviewLocalIncident,
+} from "./localTrial.js";
 
 const state = {
   authMode: "login",
@@ -22,6 +31,7 @@ const state = {
   inactivitySeconds: null,
   inactivityTimer: null,
   lastSessionTouchAt: 0,
+  localTrial: false,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -111,17 +121,27 @@ function showAuth() {
 function showApp() {
   $("#auth-shell").hidden = true;
   $("#app-shell").hidden = false;
-  setText("#user-name", state.user.displayName || state.user.email.split("@")[0]);
+  const local = state.localTrial;
+  setText("#user-name", state.user.displayName || state.user.email?.split("@")[0] || "SceneGuard user");
   setText("#user-email", state.user.email);
   setText("#user-avatar", (state.user.displayName || state.user.email).slice(0, 1).toUpperCase());
   $("#account-email").value = state.user.email;
   $("#retention-days").value = String(state.user.retentionDays || 7);
+  $("#local-mode-banner").hidden = !local;
+  $$("[data-account-only]").forEach((node) => { node.hidden = local; });
+  setText("#privacy-status", local ? "On-device trial" : "Event-only capture");
+  setText("#account-data-title", local ? "Local session data" : "Account data");
+  setText("#delete-account-title", local ? "End local trial" : "Delete account");
+  setText("#delete-account-copy", local
+    ? "This clears every space, baseline, zone, and evidence frame from this browser tab."
+    : "This permanently removes spaces, zones, baselines, evidence, sessions, and your authentication account.");
+  setText("#delete-account span", local ? "Clear local session" : "Delete my account");
   scheduleInactivityLogout();
   refreshIcons();
 }
 
 function scheduleInactivityLogout() {
-  if (!state.user || !Number.isFinite(state.inactivitySeconds)) return;
+  if (!state.user || state.localTrial || !Number.isFinite(state.inactivitySeconds)) return;
   window.clearTimeout(state.inactivityTimer);
   state.inactivityTimer = window.setTimeout(async () => {
     await logout();
@@ -178,6 +198,22 @@ async function handleAuthSubmit(event) {
   }
 }
 
+function startLocalTrial() {
+  window.clearTimeout(state.inactivityTimer);
+  state.user = createLocalUser();
+  state.localTrial = true;
+  state.inactivitySeconds = null;
+  state.spaces = [];
+  state.incidents = [];
+  state.activeSpace = null;
+  state.baselineImage = null;
+  state.baselinePixels = null;
+  showApp();
+  setView("live");
+  renderAll();
+  showToast("Local trial started. Nothing is uploaded or saved after this tab closes.");
+}
+
 async function bootstrapApp() {
   try {
     const [session, spaces, incidents] = await Promise.all([
@@ -186,6 +222,7 @@ async function bootstrapApp() {
       api("/api/incidents"),
     ]);
     state.user = session.user;
+    state.localTrial = false;
     state.inactivitySeconds = session.sessionPolicy.inactivitySeconds;
     state.lastSessionTouchAt = Date.now();
     state.spaces = spaces.spaces;
@@ -197,12 +234,8 @@ async function bootstrapApp() {
     renderAll();
     if (state.baselineImage) await restoreBaselinePixels(state.baselineImage);
   } catch (error) {
-    if (error.status === 401 || error.status === 503) {
-      showAuth();
-      if (error.status === 503) showToast(error.message, "error");
-      return;
-    }
-    showToast(error.message, "error");
+    showAuth();
+    if (error.status !== 401) showToast(error.message, "error");
   }
 }
 
@@ -375,13 +408,18 @@ async function createSpace(event) {
     errorNode.hidden = false;
     return;
   }
+  const input = { name: $("#space-name").value.trim(), context: $("#space-context").value };
+  if (!input.name) {
+    errorNode.textContent = "Give this space a name.";
+    errorNode.hidden = false;
+    return;
+  }
   try {
-    const result = await api("/api/spaces", {
-      method: "POST",
-      body: JSON.stringify({ name: $("#space-name").value.trim(), context: $("#space-context").value }),
-    });
-    state.spaces.unshift(result.space);
-    state.activeSpace = result.space;
+    const space = state.localTrial
+      ? createLocalSpace(input)
+      : (await api("/api/spaces", { method: "POST", body: JSON.stringify(input) })).space;
+    state.spaces.unshift(space);
+    state.activeSpace = space;
     state.baselineImage = null;
     state.baselinePixels = null;
     $("#space-dialog").close();
@@ -472,13 +510,13 @@ async function setBaseline() {
   const button = $("#baseline-button");
   button.disabled = true;
   try {
-    const result = await api(`/api/spaces/${state.activeSpace.id}/baseline`, {
-      method: "POST",
-      body: JSON.stringify({ imageData: capture.imageData, width: capture.pixels.width, height: capture.pixels.height }),
-    });
+    const input = { imageData: capture.imageData, width: capture.pixels.width, height: capture.pixels.height };
+    const baseline = state.localTrial
+      ? createLocalBaseline(input)
+      : (await api(`/api/spaces/${state.activeSpace.id}/baseline`, { method: "POST", body: JSON.stringify(input) })).baseline;
     state.baselineImage = capture.imageData;
     state.baselinePixels = capture.pixels;
-    state.activeSpace.baseline = result.baseline;
+    state.activeSpace.baseline = baseline;
     updateSpaceInList(state.activeSpace);
     updateSetupState();
     renderSpaces();
@@ -560,15 +598,16 @@ async function saveZone(event) {
   const errorNode = $("#zone-error");
   errorNode.hidden = true;
   try {
-    const result = await api(`/api/spaces/${state.activeSpace.id}/zones`, {
-      method: "POST",
-      body: JSON.stringify({
-        name: $("#zone-name").value.trim(),
-        sensitivity: Number($("#zone-sensitivity").value) / 100,
-        ...state.pendingRect,
-      }),
-    });
-    state.activeSpace.zones.push(result.zone);
+    const input = {
+      name: $("#zone-name").value.trim(),
+      sensitivity: Number($("#zone-sensitivity").value) / 100,
+      ...state.pendingRect,
+    };
+    if (!input.name) throw new Error("Give this boundary a name.");
+    const zone = state.localTrial
+      ? createLocalZone(input)
+      : (await api(`/api/spaces/${state.activeSpace.id}/zones`, { method: "POST", body: JSON.stringify(input) })).zone;
+    state.activeSpace.zones.push(zone);
     state.pendingRect = null;
     $("#zone-dialog").close();
     updateSpaceInList(state.activeSpace);
@@ -586,7 +625,7 @@ async function saveZone(event) {
 async function removeZone(zoneId) {
   if (state.armed) disarmSpace();
   try {
-    await api(`/api/zones/${zoneId}`, { method: "DELETE" });
+    if (!state.localTrial) await api(`/api/zones/${zoneId}`, { method: "DELETE" });
     state.activeSpace.zones = state.activeSpace.zones.filter((zone) => zone.id !== zoneId);
     updateSpaceInList(state.activeSpace);
     renderZones();
@@ -706,19 +745,24 @@ async function analyzeEvent(metric, afterImage) {
   status.className = "status warning";
   status.replaceChildren(document.createElement("span"), document.createTextNode("Analyzing change"));
   try {
-    const result = await api("/api/incidents/analyze", {
-      method: "POST",
-      body: JSON.stringify({
-        spaceId: state.activeSpace.id,
-        zoneId: zone.id,
-        beforeImage: state.baselineImage,
-        afterImage,
-        changeRatio: metric.changeRatio,
-      }),
-    });
-    state.incidents.unshift(result.incident);
+    const input = {
+      spaceId: state.activeSpace.id,
+      zoneId: zone.id,
+      zoneName: zone.name,
+      beforeImage: state.baselineImage,
+      afterImage,
+      changeRatio: metric.changeRatio,
+    };
+    let incident;
+    if (state.localTrial) {
+      incident = createLocalIncident(input);
+    } else {
+      const { zoneName, ...apiInput } = input;
+      incident = (await api("/api/incidents/analyze", { method: "POST", body: JSON.stringify(apiInput) })).incident;
+    }
+    state.incidents.unshift(incident);
     renderIncidents();
-    openEvent(result.incident);
+    openEvent(incident);
     showToast("A protected-zone change needs your review.");
   } catch (error) {
     showToast(error.message, "error");
@@ -744,12 +788,11 @@ function openEvent(incident) {
 async function reviewEvent(reviewStatus) {
   if (!state.activeEvent) return;
   try {
-    const result = await api(`/api/incidents/${state.activeEvent.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ reviewStatus }),
-    });
-    const index = state.incidents.findIndex((incident) => incident.id === result.incident.id);
-    if (index >= 0) state.incidents[index] = result.incident;
+    const incident = state.localTrial
+      ? reviewLocalIncident(state.activeEvent, reviewStatus)
+      : (await api(`/api/incidents/${state.activeEvent.id}`, { method: "PATCH", body: JSON.stringify({ reviewStatus }) })).incident;
+    const index = state.incidents.findIndex((candidate) => candidate.id === incident.id);
+    if (index >= 0) state.incidents[index] = incident;
     $("#event-dialog").close();
     state.activeEvent = null;
     renderIncidents();
@@ -800,9 +843,15 @@ async function changeEmail() {
 
 async function exportAccount() {
   try {
-    const response = await fetch("/api/account/export", { credentials: "same-origin" });
-    if (!response.ok) throw new Error("The export could not be created.");
-    const blob = await response.blob();
+    let blob;
+    if (state.localTrial) {
+      const payload = createLocalExport({ user: state.user, spaces: state.spaces, incidents: state.incidents });
+      blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    } else {
+      const response = await fetch("/api/account/export", { credentials: "same-origin" });
+      if (!response.ok) throw new Error("The export could not be created.");
+      blob = await response.blob();
+    }
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -815,15 +864,16 @@ async function exportAccount() {
 }
 
 async function deleteAccount() {
-  const confirmation = window.prompt('Type DELETE to permanently remove your SceneGuard account and all evidence.');
-  if (confirmation !== "DELETE") return;
+  const local = state.localTrial;
+  const confirmation = window.prompt(local
+    ? "Type CLEAR to remove this local session from the current tab."
+    : "Type DELETE to permanently remove your SceneGuard account and all evidence.");
+  if (confirmation !== (local ? "CLEAR" : "DELETE")) return;
   try {
-    await api("/api/account", { method: "DELETE", body: JSON.stringify({ confirmation }) });
-    state.user = null;
-    state.spaces = [];
-    state.incidents = [];
+    if (!local) await api("/api/account", { method: "DELETE", body: JSON.stringify({ confirmation }) });
+    clearSession();
     showAuth();
-    showToast("Account and stored evidence permanently deleted.");
+    showToast(local ? "Local session cleared from this tab." : "Account and stored evidence permanently deleted.");
   } catch (error) {
     showToast(error.message, "error");
   }
@@ -831,17 +881,30 @@ async function deleteAccount() {
 
 async function logout() {
   window.clearTimeout(state.inactivityTimer);
-  try { await api("/api/auth/logout", { method: "POST" }); } catch {}
+  if (!state.localTrial) {
+    try { await api("/api/auth/logout", { method: "POST" }); } catch {}
+  }
+  clearSession();
+  showAuth();
+}
+
+function clearSession() {
+  stopCamera();
   state.user = null;
   state.spaces = [];
   state.incidents = [];
-  showAuth();
+  state.activeSpace = null;
+  state.activeEvent = null;
+  state.baselineImage = null;
+  state.baselinePixels = null;
+  state.localTrial = false;
 }
 
 function bindEvents() {
   $("#auth-form").addEventListener("submit", handleAuthSubmit);
   $("#toggle-password").addEventListener("click", togglePasswordVisibility);
   $("#auth-mode").addEventListener("click", () => setAuthMode(state.authMode === "login" ? "signup" : "login"));
+  $("#local-trial-button").addEventListener("click", startLocalTrial);
   $$(".nav-item").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
   $$("[data-create-space]").forEach((button) => button.addEventListener("click", openCreateSpace));
   $("#create-space-button").addEventListener("click", openCreateSpace);

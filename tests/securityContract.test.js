@@ -60,6 +60,13 @@ test("transport, API limits, email-change logging, and safe rendering are enforc
   assert.doesNotMatch(client, /innerHTML|localStorage|sessionStorage/);
 });
 
+test("the private local trial remains available when account bootstrap fails", async () => {
+  const client = await readFile(clientUrl, "utf8");
+  assert.match(client, /function startLocalTrial\(\)/);
+  assert.match(client, /catch \(error\) \{\s*showAuth\(\);\s*if \(error\.status !== 401\)/);
+  assert.doesNotMatch(client, /localStorage|sessionStorage/);
+});
+
 test("GPT analysis prompt explicitly excludes identity, emotion, intent, and danger inference", async () => {
   const source = await readFile(serverUrl, "utf8");
   assert.match(source, /Do not identify people/);
