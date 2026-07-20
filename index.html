@@ -142,7 +142,24 @@
 
         <section id="incidents-view" class="view" aria-labelledby="view-title">
           <div class="section-intro"><div><h2>Evidence, not assumptions</h2><p>Every event includes the observable trigger, before-and-after evidence, confidence, and your review.</p></div></div>
+          <div id="evidence-summary" class="evidence-summary" hidden>
+            <div class="evi-stat"><span class="evi-num" id="evi-total">0</span><span class="evi-label">Events</span></div>
+            <div class="evi-stat needs"><span class="evi-num" id="evi-review">0</span><span class="evi-label">Need review</span></div>
+            <div class="evi-stat concern"><span class="evi-num" id="evi-concern">0</span><span class="evi-label">Concerns</span></div>
+          </div>
+          <div id="evidence-filters" class="evidence-filters" hidden>
+            <div class="filter-pills" role="group" aria-label="Filter evidence by review status">
+              <button class="filter-pill active" type="button" data-status="all">All</button>
+              <button class="filter-pill" type="button" data-status="unreviewed">Needs review</button>
+              <button class="filter-pill" type="button" data-status="concern">Concern</button>
+              <button class="filter-pill" type="button" data-status="expected">Expected</button>
+            </div>
+            <select id="evidence-space-filter" class="filter-select" aria-label="Filter evidence by space">
+              <option value="all">All spaces</option>
+            </select>
+          </div>
           <div id="incident-list" class="incident-list"></div>
+          <div id="incident-none" class="rail-empty" hidden>No events match this filter.</div>
           <div id="incident-empty" class="center-state compact"><div class="state-icon"><i data-lucide="list-checks"></i></div><h2>No evidence captured</h2><p>Events will appear only after an armed protected zone changes.</p></div>
         </section>
 
