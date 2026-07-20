@@ -194,6 +194,20 @@ p { color: var(--muted); line-height: 1.55; }
 
 .section-intro { min-height: 66px; display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
 .section-intro p { margin-bottom: 0; }
+.evidence-summary { margin-top: 18px; display: flex; gap: 10px; }
+.evi-stat { flex: 1; padding: 13px 16px; display: flex; flex-direction: column; gap: 3px; border: 1px solid var(--line); border-radius: 7px; background: white; }
+.evi-stat .evi-num { font-size: 1.5rem; font-weight: 800; color: var(--ink); line-height: 1; }
+.evi-stat .evi-label { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.evi-stat.needs { background: var(--yellow-soft); border-color: #f0d58f; }
+.evi-stat.needs .evi-num { color: #8b6511; }
+.evi-stat.concern { background: var(--coral-soft); border-color: #f4c3ba; }
+.evi-stat.concern .evi-num { color: var(--coral-dark); }
+.evidence-filters { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.filter-pills { display: inline-flex; gap: 6px; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); }
+.filter-pill { min-height: 32px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font-size: .72rem; font-weight: 700; cursor: pointer; }
+.filter-pill:hover { color: var(--ink); }
+.filter-pill.active { background: white; color: var(--green); box-shadow: var(--shadow); }
+.filter-select { min-height: 40px; padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: 6px; background: white; color: var(--ink); font-size: .78rem; font-weight: 600; }
 .incident-list, .space-list { margin-top: 18px; display: grid; gap: 10px; }
 .incident-row { min-height: 104px; padding: 13px; display: grid; grid-template-columns: 120px minmax(0, 1fr) auto; gap: 17px; align-items: center; border: 1px solid var(--line); border-radius: 7px; background: white; }
 .incident-thumb { width: 120px; aspect-ratio: 16 / 10; overflow: hidden; border-radius: 5px; background: var(--ink); }
