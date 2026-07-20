@@ -22,7 +22,11 @@ const state = {
   inactivitySeconds: null,
   inactivityTimer: null,
   lastSessionTouchAt: 0,
+  incidentFilter: { status: "all", spaceId: "all" },
 };
+
+const isUnreviewed = (incident) =>
+  incident.reviewStatus !== "expected" && incident.reviewStatus !== "concern";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -313,13 +317,52 @@ function renderSpaces() {
   refreshIcons();
 }
 
+function incidentMatchesFilter(incident) {
+  const { status, spaceId } = state.incidentFilter;
+  if (spaceId !== "all" && incident.spaceId !== spaceId) return false;
+  if (status === "unreviewed") return isUnreviewed(incident);
+  if (status === "concern") return incident.reviewStatus === "concern";
+  if (status === "expected") return incident.reviewStatus === "expected";
+  return true;
+}
+
+function renderEvidenceControls() {
+  const has = state.incidents.length > 0;
+  $("#evidence-summary").hidden = !has;
+  $("#evidence-filters").hidden = !has;
+  setText("#evi-total", String(state.incidents.length));
+  setText("#evi-review", String(state.incidents.filter(isUnreviewed).length));
+  setText("#evi-concern", String(state.incidents.filter((i) => i.reviewStatus === "concern").length));
+  $$("#evidence-filters .filter-pill").forEach((pill) =>
+    pill.classList.toggle("active", pill.dataset.status === state.incidentFilter.status)
+  );
+  const select = $("#evidence-space-filter");
+  const current = state.incidentFilter.spaceId;
+  select.replaceChildren();
+  const all = document.createElement("option");
+  all.value = "all";
+  all.textContent = "All spaces";
+  select.append(all);
+  state.spaces.forEach((space) => {
+    const option = document.createElement("option");
+    option.value = space.id;
+    option.textContent = space.name;
+    select.append(option);
+  });
+  select.value = state.spaces.some((s) => s.id === current) ? current : "all";
+  if (select.value !== current) state.incidentFilter.spaceId = "all";
+}
+
 function renderIncidents() {
   const list = $("#incident-list");
   list.replaceChildren();
   $("#incident-empty").hidden = state.incidents.length > 0;
   $("#incident-count").hidden = state.incidents.length === 0;
   setText("#incident-count", String(state.incidents.length));
-  state.incidents.forEach((incident) => {
+  renderEvidenceControls();
+  const visible = state.incidents.filter(incidentMatchesFilter);
+  $("#incident-none").hidden = !(state.incidents.length > 0 && visible.length === 0);
+  visible.forEach((incident) => {
     const row = document.createElement("article");
     row.className = "incident-row";
     const thumb = document.createElement("div");
@@ -866,6 +909,16 @@ function bindEvents() {
   $("#export-account").addEventListener("click", exportAccount);
   $("#delete-account").addEventListener("click", deleteAccount);
   $("#logout-button").addEventListener("click", logout);
+  $$("#evidence-filters .filter-pill").forEach((pill) =>
+    pill.addEventListener("click", () => {
+      state.incidentFilter.status = pill.dataset.status;
+      renderIncidents();
+    })
+  );
+  $("#evidence-space-filter").addEventListener("change", (event) => {
+    state.incidentFilter.spaceId = event.target.value;
+    renderIncidents();
+  });
   window.addEventListener("resize", paintZones);
   document.addEventListener("visibilitychange", () => { if (document.hidden && state.armed) disarmSpace(); });
   for (const eventName of ["pointerdown", "keydown"]) document.addEventListener(eventName, scheduleInactivityLogout, { passive: true });
