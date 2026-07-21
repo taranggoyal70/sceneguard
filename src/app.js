@@ -353,6 +353,41 @@ function renderEvidenceControls() {
   if (select.value !== current) state.incidentFilter.spaceId = "all";
 }
 
+function exportEvidence() {
+  const rows = state.incidents.filter(incidentMatchesFilter);
+  if (!rows.length) {
+    showToast("No events match this filter to export.", "error");
+    return;
+  }
+  const esc = (value) => {
+    const s = value == null ? "" : String(value);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const header = ["date", "space", "summary", "reason", "status", "confidence", "source"];
+  const lines = rows.map((incident) => {
+    const space = state.spaces.find((candidate) => candidate.id === incident.spaceId);
+    return [
+      new Date(incident.createdAt).toISOString(),
+      space?.name ?? "",
+      incident.summary,
+      incident.reason,
+      incident.reviewStatus,
+      `${Math.round(incident.confidence * 100)}%`,
+      incident.analysisSource,
+    ]
+      .map(esc)
+      .join(",");
+  });
+  const csv = [header.join(","), ...lines].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `sceneguard-evidence-${new Date().toISOString().slice(0, 10)}.csv`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 function renderIncidents() {
   const list = $("#incident-list");
   list.replaceChildren();
@@ -919,6 +954,7 @@ function bindEvents() {
     state.incidentFilter.spaceId = event.target.value;
     renderIncidents();
   });
+  $("#evidence-export").addEventListener("click", exportEvidence);
   window.addEventListener("resize", paintZones);
   document.addEventListener("visibilitychange", () => { if (document.hidden && state.armed) disarmSpace(); });
   for (const eventName of ["pointerdown", "keydown"]) document.addEventListener(eventName, scheduleInactivityLogout, { passive: true });
